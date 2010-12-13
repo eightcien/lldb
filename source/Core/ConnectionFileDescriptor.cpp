@@ -428,7 +428,12 @@ ConnectionFileDescriptor::NamedSocketAccept (const char *socket_name, Error *err
     saddr_un.sun_family = AF_UNIX;
     ::strncpy(saddr_un.sun_path, socket_name, sizeof(saddr_un.sun_path) - 1);
     saddr_un.sun_path[sizeof(saddr_un.sun_path) - 1] = '\0';
+
+    // FIXME: To support the wider BSD family this should be predicated by a
+    // #define set by configure as well.
+#if defined(__APPLE__)
     saddr_un.sun_len = SUN_LEN (&saddr_un);
+#endif
 
     if (::bind (listen_socket, (struct sockaddr *)&saddr_un, SUN_LEN (&saddr_un)) == 0) 
     {

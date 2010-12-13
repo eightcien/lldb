@@ -440,7 +440,7 @@ CommandObject::FindArgumentDataByType (CommandArgumentType arg_type)
 
     for (int i = 0; i < eArgTypeLastArg; ++i)
         if (table[i].arg_type == arg_type)
-            return (ArgumentTableEntry *) &(table[i]);
+            return const_cast<ArgumentTableEntry *>(&(table[i]));
 
     return NULL;
 }
@@ -449,7 +449,7 @@ void
 CommandObject::GetArgumentHelp (Stream &str, CommandArgumentType arg_type, CommandInterpreter &interpreter)
 {
     const ArgumentTableEntry* table = CommandObject::GetArgumentTable();
-    ArgumentTableEntry *entry = (ArgumentTableEntry *) &(table[arg_type]);
+    ArgumentTableEntry *entry = const_cast<ArgumentTableEntry *>(&(table[arg_type]));
     
     // The table is *supposed* to be kept in arg_type order, but someone *could* have messed it up...
 
@@ -472,7 +472,7 @@ CommandObject::GetArgumentHelp (Stream &str, CommandArgumentType arg_type, Comma
 const char *
 CommandObject::GetArgumentName (CommandArgumentType arg_type)
 {
-    ArgumentTableEntry *entry = (ArgumentTableEntry *) &(CommandObject::GetArgumentTable()[arg_type]);
+    ArgumentTableEntry *entry = const_cast<ArgumentTableEntry *>(&(CommandObject::GetArgumentTable()[arg_type]));
 
     // The table is *supposed* to be kept in arg_type order, but someone *could* have messed it up...
 
@@ -569,7 +569,7 @@ CommandObject::GetFormattedCommandArguments (Stream &str)
     }
 }
 
-const CommandArgumentType
+CommandArgumentType
 CommandObject::LookupArgumentName (const char *arg_name)
 {
     CommandArgumentType return_type = eArgTypeLastArg;

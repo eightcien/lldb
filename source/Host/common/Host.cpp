@@ -675,7 +675,7 @@ Host::GetLLDBPath (PathType path_type, FileSpec &file_spec)
             static ConstString g_lldb_so_dir;
             if (!g_lldb_so_dir)
             {
-                FileSpec lldb_file_spec (Host::GetModuleFileSpecForHostAddress ((void *)Host::GetLLDBPath));
+                FileSpec lldb_file_spec (Host::GetModuleFileSpecForHostAddress((void *)Host::GetLLDBPath));
                 g_lldb_so_dir = lldb_file_spec.GetDirectory();
             }
             file_spec.GetDirectory() = g_lldb_so_dir;
@@ -877,7 +877,7 @@ Host::GetArchSpecForExistingProcess (const char *process_name)
 
 #if !defined (__APPLE__) // see macosx/Host.mm
 bool
-Host::OpenFileInExternalEditor (FileSpec &file_spec, uint32_t line_no)
+Host::OpenFileInExternalEditor (const FileSpec &file_spec, uint32_t line_no)
 {
     return false;
 }
@@ -901,6 +901,7 @@ LaunchApplication (const FileSpec &app_file_spec)
 lldb::pid_t
 Host::LaunchInNewTerminal 
 (
+    const char *tty_name,
     const char **argv, 
     const char **envp,
     const ArchSpec *arch_spec,

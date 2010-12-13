@@ -16,7 +16,6 @@
 #include "../Commands/CommandObjectApropos.h"
 #include "../Commands/CommandObjectArgs.h"
 #include "../Commands/CommandObjectBreakpoint.h"
-//#include "../Commands/CommandObjectCall.h"
 #include "../Commands/CommandObjectDisassemble.h"
 #include "../Commands/CommandObjectExpression.h"
 #include "../Commands/CommandObjectFile.h"
@@ -150,7 +149,6 @@ CommandInterpreter::LoadCommandDictionary ()
     
     m_command_dict["apropos"]   = CommandObjectSP (new CommandObjectApropos (*this));
     m_command_dict["breakpoint"]= CommandObjectSP (new CommandObjectMultiwordBreakpoint (*this));
-    //m_command_dict["call"]      = CommandObjectSP (new CommandObjectCall (*this));
     m_command_dict["commands"]  = CommandObjectSP (new CommandObjectMultiwordCommands (*this));
     m_command_dict["disassemble"] = CommandObjectSP (new CommandObjectDisassemble (*this));
     m_command_dict["expression"]= CommandObjectSP (new CommandObjectExpression (*this));

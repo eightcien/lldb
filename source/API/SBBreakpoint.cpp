@@ -319,9 +319,9 @@ SBBreakpoint::GetThreadIndex() const
     }
     LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_API));
     if (log)
-        log->Printf ("SBBreakpoint(%p)::GetThreadIndex () => %u", m_opaque_sp.get(), index);
+        log->Printf ("SBBreakpoint(%p)::GetThreadIndex () => %u", m_opaque_sp.get(), thread_idx);
 
-    return 0;
+    return thread_idx;
 }
     
 

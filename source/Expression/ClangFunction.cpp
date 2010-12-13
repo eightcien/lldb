@@ -54,11 +54,11 @@ ClangFunction::ClangFunction
     const Address& functionAddress, 
     const ValueList &arg_value_list
 ) :
-    m_target_triple (target_triple),
     m_function_ptr (NULL),
     m_function_addr (functionAddress),
     m_function_return_qual_type(return_qualtype),
     m_clang_ast_context (ast_context),
+    m_target_triple (target_triple),
     m_wrapper_function_name ("__lldb_caller_function"),
     m_wrapper_struct_name ("__lldb_caller_struct"),
     m_wrapper_function_addr (),
@@ -76,11 +76,11 @@ ClangFunction::ClangFunction
     ClangASTContext *ast_context, 
     const ValueList &arg_value_list
 ) :
-    m_target_triple (target_triple),
     m_function_ptr (&function),
     m_function_addr (),
     m_function_return_qual_type (),
     m_clang_ast_context (ast_context),
+    m_target_triple (target_triple),
     m_wrapper_function_name ("__lldb_function_caller"),
     m_wrapper_struct_name ("__lldb_caller_struct"),
     m_wrapper_function_addr (),

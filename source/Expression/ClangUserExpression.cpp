@@ -43,12 +43,12 @@ ClangUserExpression::ClangUserExpression (const char *expr,
     m_expr_text(expr),
     m_expr_prefix(expr_prefix ? expr_prefix : ""),
     m_transformed_text(),
+    m_desired_type(NULL, NULL),
     m_jit_addr(LLDB_INVALID_ADDRESS),
     m_cplusplus(false),
     m_objectivec(false),
     m_needs_object_ptr(false),
-    m_const_object(false),
-    m_desired_type(NULL, NULL)
+    m_const_object(false)
 {
 }
 

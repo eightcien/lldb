@@ -2227,7 +2227,7 @@ DWARFExpression::Evaluate
                     return false;
                 }
                 
-                if (size && (index >= size || index < 0))
+                if (size && ((uint64_t)index >= size || index < 0))
                 {
                     if (error_ptr)
                         error_ptr->SetErrorStringWithFormat("Out of bounds array access.  %lld is not in [0, %llu]", index, size);

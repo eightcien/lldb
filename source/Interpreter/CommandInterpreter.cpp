@@ -400,7 +400,7 @@ CommandInterpreter::GetAliasHelp (const char *alias_name, const char *command_na
     if (option_arg_vector_sp != NULL)
     {
         OptionArgVector *options = option_arg_vector_sp.get();
-        for (int i = 0; i < options->size(); ++i)
+        for (size_t i = 0; i < options->size(); ++i)
         {
             OptionArgPair cur_option = (*options)[i];
             std::string opt = cur_option.first;
@@ -604,7 +604,7 @@ CommandInterpreter::BuildAliasResult (const char *alias_name, std::string &raw_i
         {
             OptionArgVector *option_arg_vector = option_arg_vector_sp.get();
 
-            for (int i = 0; i < option_arg_vector->size(); ++i)
+            for (size_t i = 0; i < option_arg_vector->size(); ++i)
             {
                 OptionArgPair option_pair = (*option_arg_vector)[i];
                 OptionArgValue value_pair = option_pair.second;
@@ -1433,11 +1433,11 @@ CommandInterpreter::OutputFormattedHelpText (Stream &strm,
 {
     const uint32_t max_columns = m_debugger.GetTerminalWidth();
 
-    int indent_size = max_word_len + strlen (separator) + 2;
+    size_t indent_size = max_word_len + strlen (separator) + 2;
 
     strm.IndentMore (indent_size);
 
-    int len = indent_size + strlen (help_text) + 1;
+    size_t len = indent_size + strlen (help_text) + 1;
     char *text  = (char *) malloc (len);
     sprintf (text, "%-*s %s %s",  max_word_len, word_text, separator, help_text);
     if (text[len - 1] == '\n')

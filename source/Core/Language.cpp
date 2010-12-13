@@ -109,7 +109,7 @@ Language::SetLanguageFromCString(const char *language_cstr)
 const char *
 Language::AsCString (lldb::DescriptionLevel level) const
 {
-    if (m_language < g_num_languages && level < kNumDescriptionLevels)
+    if ((size_t)m_language < g_num_languages && level < kNumDescriptionLevels)
     {
         const char *name = g_languages[m_language].names[level];
         if (name)

@@ -175,7 +175,7 @@ const SettingEntry *
 UserSettingsController::GetGlobalEntry (const ConstString &var_name)
 {
 
-    for (int i = 0; i < m_settings.global_settings.size(); ++i)
+    for (unsigned int i = 0; i < m_settings.global_settings.size(); ++i)
     {
         SettingEntry &entry = m_settings.global_settings[i];
         ConstString entry_name (entry.var_name);
@@ -190,7 +190,7 @@ const SettingEntry *
 UserSettingsController::GetInstanceEntry (const ConstString &const_var_name)
 {
 
-    for (int i = 0; i < m_settings.instance_settings.size(); ++i)
+    for (unsigned int i = 0; i < m_settings.instance_settings.size(); ++i)
     {
         SettingEntry &entry = m_settings.instance_settings[i];
         ConstString entry_name (entry.var_name);
@@ -464,7 +464,7 @@ UserSettingsController::SetVariable (const char *full_dot_name,
                     {
                         found = true;
                         std::string new_name;
-                        for (int j = 0; j < names.GetArgumentCount(); ++j)
+                        for (unsigned int j = 0; j < names.GetArgumentCount(); ++j)
                         {
                             if (j > 0)
                                 new_name += '.';
@@ -532,14 +532,14 @@ UserSettingsController::GetVariable
     {
         ConstString child_prefix (names.GetArgumentAtIndex (0));
         bool found = false;
-        for (int i = 0; i < m_children.size() && !found; ++i)
+        for (unsigned int i = 0; i < m_children.size() && !found; ++i)
         {
             if (child_prefix == m_children[i]->GetLevelName())
             {
                 found = true;
                 child = m_children[i];
                 std::string new_name;
-                for (int j = 0; j < names.GetArgumentCount(); ++j)
+                for (unsigned int j = 0; j < names.GetArgumentCount(); ++j)
                 {
                     if (j > 0)
                         new_name += '.';
@@ -691,7 +691,7 @@ UserSettingsController::CreateDefaultInstanceSettings ()
 {
     Error err;
     const ConstString &default_name = InstanceSettings::GetDefaultName();
-    for (int i = 0; i < m_settings.instance_settings.size(); ++i)
+    for (unsigned int i = 0; i < m_settings.instance_settings.size(); ++i)
     {
         SettingEntry &entry = m_settings.instance_settings[i];
         ConstString var_name (entry.var_name);
@@ -711,7 +711,7 @@ UserSettingsController::CopyDefaultSettings (const lldb::InstanceSettingsSP &act
                                              bool pending)
 {
     Error err;
-    for (int i = 0; i < m_settings.instance_settings.size(); ++i)
+    for (unsigned int i = 0; i < m_settings.instance_settings.size(); ++i)
     {
         SettingEntry &entry = m_settings.instance_settings[i];
         ConstString var_name (entry.var_name);
@@ -723,7 +723,7 @@ UserSettingsController::CopyDefaultSettings (const lldb::InstanceSettingsSP &act
             value_str.append (value.GetStringAtIndex (0));
         else if (value.GetSize() > 1)
         {
-            for (int j = 0; j < value.GetSize(); ++j)
+            for (unsigned int j = 0; j < value.GetSize(); ++j)
             {
                 if (j > 0)
                     value_str.append (" ");
@@ -772,7 +772,7 @@ UserSettingsController::GetAllDefaultSettingValues (StreamString &result_stream)
     BuildParentPrefix (parent_prefix);
     const char *prefix = parent_prefix.c_str();
 
-    for (int i = 0; i < m_settings.instance_settings.size(); ++i)
+    for (unsigned int i = 0; i < m_settings.instance_settings.size(); ++i)
     {
         SettingEntry &entry = m_settings.instance_settings[i];
         ConstString var_name (entry.var_name);
@@ -786,10 +786,10 @@ UserSettingsController::GetAllDefaultSettingValues (StreamString &result_stream)
             value_string.Printf ("%s", tmp_value.GetStringAtIndex (0));
         else
         {
-            for (int j = 0; j < tmp_value.GetSize(); ++j)
+            for (unsigned int j = 0; j < tmp_value.GetSize(); ++j)
             {
                 if (entry.var_type == lldb::eSetVarTypeArray)
-                    value_string.Printf ("\n  [%d]: '%s'", j, tmp_value.GetStringAtIndex (j));
+                    value_string.Printf ("\n  [%u]: '%s'", j, tmp_value.GetStringAtIndex (j));
                 else if (entry.var_type == lldb::eSetVarTypeDictionary)
                     value_string.Printf ("\n  '%s'", tmp_value.GetStringAtIndex (j));
             }
@@ -824,7 +824,7 @@ UserSettingsController::GetAllPendingSettingValues (StreamString &result_stream)
 
         const ConstString instance_name (tmp_name.c_str());
 
-        for (int i = 0; i < m_settings.instance_settings.size(); ++i)
+        for (unsigned int i = 0; i < m_settings.instance_settings.size(); ++i)
         {
             SettingEntry &entry = m_settings.instance_settings[i];
             ConstString var_name (entry.var_name);
@@ -839,7 +839,7 @@ UserSettingsController::GetAllPendingSettingValues (StreamString &result_stream)
                 value_str.Printf ("%s", tmp_value.GetStringAtIndex (0));
             else
             {
-                for (int j = 0; j < tmp_value.GetSize(); ++j)
+                for (unsigned int j = 0; j < tmp_value.GetSize(); ++j)
                     value_str.Printf  ("%s ", tmp_value.GetStringAtIndex (j));
             }
             
@@ -890,7 +890,7 @@ UserSettingsController::GetAllInstanceVariableValues (CommandInterpreter &interp
         std::string instance_name = pos->first;
         InstanceSettings *settings = pos->second;
 
-        for (int i = 0; i < m_settings.instance_settings.size(); ++i)
+        for (unsigned int i = 0; i < m_settings.instance_settings.size(); ++i)
         {
             SettingEntry &entry = m_settings.instance_settings[i];
             const ConstString var_name (entry.var_name);
@@ -904,7 +904,7 @@ UserSettingsController::GetAllInstanceVariableValues (CommandInterpreter &interp
                 tmp_value_str.Printf ("%s", tmp_value.GetStringAtIndex (0));
             else
             {
-                for (int j = 0; j < tmp_value.GetSize(); ++j)
+                for (unsigned int j = 0; j < tmp_value.GetSize(); ++j)
                     tmp_value_str.Printf ("%s ",tmp_value.GetStringAtIndex (j));
             }
             
@@ -1006,7 +1006,7 @@ FindMaxNameLength (std::vector<SettingEntry> table)
 {
     int max_length = 1;
 
-    for (int i = 0; i < table.size(); ++i)
+    for (unsigned int i = 0; i < table.size(); ++i)
     {
         int len = strlen (table[i].var_name);
         if (len > max_length)
@@ -1380,9 +1380,9 @@ UserSettingsController::GetAllVariableValues (CommandInterpreter &interpreter,
         else
         {
             description.Printf ("%s (%s):\n", full_var_name.GetData(), GetTypeString (entry.var_type));
-            for (int j = 0; j < value.GetSize(); ++j)
+            for (unsigned int j = 0; j < value.GetSize(); ++j)
                 if (entry.var_type == lldb::eSetVarTypeArray)
-                    description.Printf ("  [%d]: '%s'\n", j, value.GetStringAtIndex (j));
+                    description.Printf ("  [%u]: '%s'\n", j, value.GetStringAtIndex (j));
                 else if (entry.var_type == lldb::eSetVarTypeDictionary)
                     description.Printf ("  '%s'\n", value.GetStringAtIndex (j));
         }
@@ -1558,7 +1558,7 @@ UserSettingsController::BooleanMatches (const char *partial_value,
     }
     else
     {
-        int partial_len = strlen (partial_value);
+        size_t partial_len = strlen (partial_value);
 
         if ((partial_len <= true_string.length())
             && (true_string.find (partial_value) == 0))
@@ -1581,7 +1581,7 @@ UserSettingsController::EnumMatches (const char *partial_value,
                                      bool &word_complete,
                                      StringList &matches)
 {
-    int len = (partial_value != NULL) ? strlen (partial_value) : 0;
+    size_t len = (partial_value != NULL) ? strlen (partial_value) : 0;
 
     int i = 0;
     while (enum_values[i].string_value != NULL)
@@ -1760,7 +1760,7 @@ UserSettingsController::GlobalVariableMatches (const char *partial_name,
                                                const std::string &complete_prefix,
                                                StringList &matches)
 {
-    int partial_len = (partial_name != NULL) ? strlen (partial_name) : 0;
+    size_t partial_len = (partial_name != NULL) ? strlen (partial_name) : 0;
     int num_matches = 0;
 
     for (size_t i = 0; i < m_settings.global_settings.size(); ++i)
@@ -1791,7 +1791,7 @@ UserSettingsController::InstanceVariableMatches (const char *partial_name,
                                                  const char *instance_name,
                                                  StringList &matches)
 {
-    int partial_len = (partial_name != NULL) ? strlen (partial_name) : 0;
+    size_t partial_len = (partial_name != NULL) ? strlen (partial_name) : 0;
     int num_matches = 0;
 
     for (size_t i = 0; i < m_settings.instance_settings.size(); ++i)
@@ -1834,7 +1834,7 @@ UserSettingsController::LiveInstanceMatches (const char *partial_name,
                                              bool &word_complete,
                                              StringList &matches)
 {
-    int partial_len = (partial_name != NULL) ? strlen (partial_name) : 0;
+    size_t partial_len = (partial_name != NULL) ? strlen (partial_name) : 0;
     int num_matches = 0;
 
     std::map<std::string, InstanceSettings*>::iterator pos;
@@ -1867,7 +1867,7 @@ UserSettingsController::ChildMatches (const char *partial_name,
                                       bool &word_complete,
                                       StringList &matches)
 {
-    int partial_len = (partial_name != NULL) ? strlen (partial_name) : 0;
+    size_t partial_len = (partial_name != NULL) ? strlen (partial_name) : 0;
     int num_children = GetNumChildren();
     int num_matches = 0;
     for (int i = 0; i < num_children; ++i)
@@ -1990,7 +1990,7 @@ UserSettingsController::UpdateStringArrayVariable (lldb::VarSetOperationType op,
     
     if (index_value != NULL)
     {
-        for (int i = 0; i < strlen(index_value); ++i)
+        for (unsigned int i = 0; i < strlen(index_value); ++i)
             if (!isdigit (index_value[i]))
             {
                 valid_index = false;
@@ -2002,7 +2002,7 @@ UserSettingsController::UpdateStringArrayVariable (lldb::VarSetOperationType op,
             index = atoi (index_value);
             
         if (index < 0
-            || index >= array_var.GetArgumentCount())
+            || index >= (int)array_var.GetArgumentCount())
         {
             valid_index = false;
             err.SetErrorStringWithFormat ("%d is outside the bounds of the specified array variable. "
@@ -2029,7 +2029,7 @@ UserSettingsController::UpdateStringArrayVariable (lldb::VarSetOperationType op,
                 Args new_array (new_value);
                 if (op == lldb::eVarSetOperationInsertAfter)
                     ++index;
-                for (int i = 0; i < new_array.GetArgumentCount(); ++i)
+                for (size_t i = 0; i < new_array.GetArgumentCount(); ++i)
                     array_var.InsertArgumentAtIndex (index, new_array.GetArgumentAtIndex (i));
             }
             break;

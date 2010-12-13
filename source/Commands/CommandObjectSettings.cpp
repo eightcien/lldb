@@ -355,12 +355,12 @@ CommandObjectSettingsShow::Execute (Args& command,
          }
         else
         {
-            char *type_name = (char *) "";
+            char *type_name = const_cast<char *>("");
             if (var_type != eSetVarTypeNone)
             {
                 StreamString tmp_str;
                 tmp_str.Printf (" (%s)", UserSettingsController::GetTypeString (var_type));
-                type_name = (char *) tmp_str.GetData();
+                type_name = const_cast<char *>(tmp_str.GetData());
             }
 
             if (value.GetSize() == 0)

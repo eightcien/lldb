@@ -384,6 +384,7 @@ Communication::ConnectionStatusAsCString (lldb::ConnectionStatus status)
 {
     switch (status)
     {
+    case eConnectionStatusEndOfFile:      return "end of file";
     case eConnectionStatusSuccess:        return "success";
     case eConnectionStatusError:          return "error";
     case eConnectionStatusTimedOut:       return "timed out";

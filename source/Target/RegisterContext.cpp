@@ -283,6 +283,9 @@ RegisterContext::ReadRegisterValue (uint32_t reg, Scalar &value)
     uint32_t offset = 0;
     switch (reg_info->encoding)
     {
+    default:
+        assert(false && "unexpected register encoding");
+        break;
     case eEncodingUint:
         switch (reg_info->byte_size)
         {

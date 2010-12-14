@@ -2306,6 +2306,9 @@ DWARFExpression::Evaluate
                             
                             switch (source_value_type)
                             {
+                            default:
+                                assert(false && "unexpected value type");
+                                break;
                             case Value::eValueTypeLoadAddress:
                                 switch (target_value_type)
                                 {

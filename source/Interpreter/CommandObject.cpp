@@ -418,14 +418,14 @@ CommandObject::HelpTextContainsWord (const char *search_word)
     return found_word;
 }
 
-int
+unsigned int
 CommandObject::GetNumArgumentEntries  ()
 {
     return m_arguments.size();
 }
 
 CommandObject::CommandArgumentEntry *
-CommandObject::GetArgumentEntryAtIndex (int idx)
+CommandObject::GetArgumentEntryAtIndex (unsigned int idx)
 {
     if (idx < m_arguments.size())
         return &(m_arguments[idx]);

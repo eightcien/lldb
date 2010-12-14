@@ -119,11 +119,11 @@ public:
     static ArgumentTableEntry *
     FindArgumentDataByType (lldb::CommandArgumentType arg_type);
 
-    int
+    unsigned int
     GetNumArgumentEntries ();
 
     CommandArgumentEntry *
-    GetArgumentEntryAtIndex (int idx);
+    GetArgumentEntryAtIndex (unsigned int idx);
 
     static void
     GetArgumentHelp (Stream &str, lldb::CommandArgumentType arg_type, CommandInterpreter &interpreter);

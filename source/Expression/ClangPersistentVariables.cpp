@@ -7,8 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <inttypes.h>
-
 #include "lldb/Expression/ClangPersistentVariables.h"
 #include "lldb/Core/DataExtractor.h"
 #include "lldb/Core/Log.h"

@@ -7,6 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <inttypes.h>
+
 #include "lldb/Expression/ClangPersistentVariables.h"
 #include "lldb/Core/DataExtractor.h"
 #include "lldb/Core/Log.h"
@@ -25,7 +27,7 @@ void
 ClangPersistentVariables::GetNextResultName (ConstString &name)
 {
     char result_name[256];
-    ::snprintf (result_name, sizeof(result_name), "$%llu", m_result_counter++);
+    ::snprintf (result_name, sizeof(result_name), "$%" PRIu64, m_result_counter++);
     name.SetCString(result_name);
 }
 

@@ -7,6 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/Support/Compiler.h"
+
 #include "lldb/lldb-private.h"
 #include "lldb/Core/ConnectionFileDescriptor.h"
 #include "lldb/Core/Debugger.h"
@@ -595,7 +597,7 @@ Debugger::FindDebuggerWithID (lldb::user_id_t id)
     return debugger_sp;
 }
 
-static void
+static LLVM_ATTRIBUTE_UNUSED void 
 TestPromptFormats (StackFrame *frame)
 {
     if (frame == NULL)

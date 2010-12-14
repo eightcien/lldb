@@ -165,7 +165,8 @@ MonitorChildProcessThreadFunction (void *arg)
             }
             else
             {
-                status_cstr = "(???)";
+                // Do not confuse multiple question marks with a trigraph.
+                status_cstr = "(?""?""?)";
             }
 
             // Scope for pthread_cancel_disabler

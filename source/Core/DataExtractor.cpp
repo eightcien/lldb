@@ -1287,7 +1287,7 @@ DataExtractor::Dump
                 {
                     switch (ch)
                     {
-                    case '\e': s->Printf ("\\e", (uint8_t)ch); break;
+                    case '\033': s->Printf ("\\e", (uint8_t)ch); break;
                     case '\a': s->Printf ("\\a", ch); break;
                     case '\b': s->Printf ("\\b", ch); break;
                     case '\f': s->Printf ("\\f", ch); break;

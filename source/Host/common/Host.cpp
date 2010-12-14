@@ -659,15 +659,17 @@ Host::ResolveExecutableInBundle (FileSpec &file)
 }
 #endif
 
+// Use this symbol to identify the LLDB executable.  See Host::GetLLDBPath.
+static int TheLLDBExecutable;
 
 bool
 Host::GetLLDBPath (PathType path_type, FileSpec &file_spec)
 {
     // To get paths related to LLDB we get the path to the exectuable that
-    // contains this function. On MacOSX this will be "LLDB.framework/.../LLDB",
-    // on linux this is assumed to be the "lldb" main executable. If LLDB on
-    // linux is actually in a shared library (lldb.so??) then this function will
-    // need to be modified to "do the right thing".
+    // contains the magic symbol TheLLDBExecutable. On MacOSX this will be
+    // "LLDB.framework/.../LLDB", on linux this is assumed to be the "lldb" main
+    // executable. If LLDB on linux is actually in a shared library (lldb.so??)
+    // then this function will need to be modified to "do the right thing".
 
     switch (path_type)
     {
@@ -676,7 +678,7 @@ Host::GetLLDBPath (PathType path_type, FileSpec &file_spec)
             static ConstString g_lldb_so_dir;
             if (!g_lldb_so_dir)
             {
-                FileSpec lldb_file_spec (Host::GetModuleFileSpecForHostAddress((void *)Host::GetLLDBPath));
+                FileSpec lldb_file_spec (Host::GetModuleFileSpecForHostAddress((void *)&TheLLDBExecutable));
                 g_lldb_so_dir = lldb_file_spec.GetDirectory();
             }
             file_spec.GetDirectory() = g_lldb_so_dir;

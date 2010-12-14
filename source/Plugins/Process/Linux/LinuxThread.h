@@ -38,12 +38,6 @@ public:
     const char *
     GetInfo();
 
-    uint32_t
-    GetStackFrameCount();
-
-    lldb::StackFrameSP
-    GetStackFrameAtIndex(uint32_t idx);
-
     RegisterContextLinux *
     GetRegisterContext();
 
@@ -55,9 +49,6 @@ public:
 
     RegisterContextLinux *
     CreateRegisterContextForFrame(lldb_private::StackFrame *frame);
-
-    bool
-    GetRawStopReason(StopInfo *stop_info);
 
     //--------------------------------------------------------------------------
     // These methods form a specialized interface to linux threads.
@@ -84,6 +75,12 @@ private:
     Notification m_note;
 
     ProcessMonitor &GetMonitor();
+
+    lldb::StopInfoSP
+    GetPrivateStopReason();
+
+    lldb_private::Unwind *
+    GetUnwinder();
 };
 
 #endif // #ifndef liblldb_LinuxThread_H_

@@ -105,6 +105,7 @@ Error
 ProcessLinux::DoLaunch(Module *module,
                        char const *argv[],
                        char const *envp[],
+                       uint32_t launch_flags,
                        const char *stdin_path,
                        const char *stdout_path,
                        const char *stderr_path)
@@ -124,12 +125,6 @@ ProcessLinux::DoLaunch(Module *module,
         return error;
 
     return error;
-}
-
-void
-ProcessLinux::DidLaunch()
-{
-    UpdateLoadedSections();
 }
 
 Error
@@ -155,7 +150,7 @@ ProcessLinux::DoResume()
 }
 
 Error
-ProcessLinux::DoHalt()
+ProcessLinux::DoHalt(bool &caused_stop)
 {
     return Error(1, eErrorTypeGeneric);
 }
@@ -402,27 +397,6 @@ ProcessLinux::EnablePluginLogging(Stream *strm, Args &command)
 
 //------------------------------------------------------------------------------
 // Utility functions.
-
-void
-ProcessLinux::UpdateLoadedSections()
-{
-    ObjectFile *obj_file = m_module->GetObjectFile();
-    SectionList *sections = obj_file->GetSectionList();
-
-    // FIXME: SectionList provides iterator types, but no begin/end methods.
-    size_t num_sections = sections->GetSize();
-    for (unsigned i = 0; i < num_sections; ++i)
-    {
-        Section *section = sections->GetSectionAtIndex(i).get();
-
-        lldb::addr_t new_load_addr = section->GetFileAddress();
-        lldb::addr_t old_load_addr = GetSectionLoadAddress(section);
-
-        if (old_load_addr == LLDB_INVALID_ADDRESS ||
-            old_load_addr != new_load_addr)
-            SectionLoaded(section, new_load_addr);
-    }
-}
 
 bool
 ProcessLinux::HasExited()

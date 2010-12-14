@@ -43,6 +43,9 @@ ifdef LLDB_VENDOR
 CPP.Flags += -DLLDB_VENDOR='"$(LLDB_VENDOR) "'
 endif
 
+# Enable use of the standard C format macros.
+CPP.Flags += -D__STDC_FORMAT_MACROS
+
 # Disable -fstrict-aliasing. Darwin disables it by default (and LLVM doesn't
 # work with it enabled with GCC), Clang/llvm-gc don't support it yet, and newer
 # GCC's have false positive warnings with it on Linux (which prove a pain to
@@ -52,6 +55,10 @@ endif
 #
 # We can revisit this when LLVM/Clang support it.
 CXX.Flags += -fno-strict-aliasing
+
+# Do not warn about pragmas.  In particular, we are looking to ignore the
+# "#pragma mark" construct which GCC warns about on platforms other than Darwin.
+EXTRA_OPTIONS += -Wno-unknown-pragmas
 
 ###
 # LLDB Top Level specific stuff.

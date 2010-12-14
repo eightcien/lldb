@@ -47,9 +47,9 @@ StackFrame::StackFrame
     lldb::addr_t pc, 
     const SymbolContext *sc_ptr
 ) :
+    m_thread (thread),
     m_frame_index (frame_idx),
     m_unwind_frame_index (unwind_frame_index),    
-    m_thread (thread),
     m_reg_context_sp (),
     m_id (pc, cfa, NULL),
     m_frame_code_addr (NULL, pc),
@@ -77,9 +77,9 @@ StackFrame::StackFrame
     lldb::addr_t pc, 
     const SymbolContext *sc_ptr
 ) :
+    m_thread (thread),
     m_frame_index (frame_idx),
     m_unwind_frame_index (unwind_frame_index),    
-    m_thread (thread),
     m_reg_context_sp (reg_context_sp),
     m_id (pc, cfa, NULL),
     m_frame_code_addr (NULL, pc),
@@ -113,9 +113,9 @@ StackFrame::StackFrame
     const Address& pc_addr,
     const SymbolContext *sc_ptr
 ) :
+    m_thread (thread),
     m_frame_index (frame_idx),
     m_unwind_frame_index (unwind_frame_index),    
-    m_thread (thread),
     m_reg_context_sp (reg_context_sp),
     m_id (pc_addr.GetLoadAddress (&thread.GetProcess().GetTarget()), cfa, NULL),
     m_frame_code_addr (pc_addr),

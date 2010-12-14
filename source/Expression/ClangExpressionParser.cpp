@@ -52,6 +52,7 @@
 #include "llvm/ExecutionEngine/JIT.h"
 #include "llvm/Module.h"
 #include "llvm/LLVMContext.h"
+#include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/DynamicLibrary.h"
@@ -92,7 +93,8 @@ std::string GetBuiltinIncludePath(const char *Argv0) {
 // Main driver for Clang
 //===----------------------------------------------------------------------===//
 
-static void LLVMErrorHandler(void *UserData, const std::string &Message) {
+static LLVM_ATTRIBUTE_UNUSED void
+LLVMErrorHandler(void *UserData, const std::string &Message) {
     Diagnostic &Diags = *static_cast<Diagnostic*>(UserData);
     
     Diags.Report(diag::err_fe_error_backend) << Message;
@@ -157,7 +159,8 @@ static FrontendAction *CreateFrontendBaseAction(CompilerInstance &CI) {
     }
 }
 
-static FrontendAction *CreateFrontendAction(CompilerInstance &CI) {
+static LLVM_ATTRIBUTE_UNUSED FrontendAction *
+CreateFrontendAction(CompilerInstance &CI) {
     // Create the underlying action.
     FrontendAction *Act = CreateFrontendBaseAction(CI);
     if (!Act)

@@ -371,7 +371,7 @@ Process::ProcessInstanceSettings::GetHostEnvironmentIfNeeded ()
             const char *env_entry = host_env.GetStringAtIndex (idx);
             if (env_entry)
             {
-                char *equal_pos = ::strchr(env_entry, '=');
+                const char *equal_pos = ::strchr(env_entry, '=');
                 if (equal_pos)
                 {
                     std::string key (env_entry, equal_pos - env_entry);
@@ -1332,7 +1332,7 @@ Process::CompleteAttach ()
         ModuleList &modules = GetTarget().GetImages();
     
         size_t num_modules = modules.GetSize();
-        for (int i = 0; i < num_modules; i++)
+        for (size_t i = 0; i < num_modules; i++)
         {
             ModuleSP module_sp = modules.GetModuleAtIndex(i);
             if (module_sp->IsExecutable())
@@ -2777,7 +2777,7 @@ ProcessInstanceSettings::GetInstanceSettingsValue (const SettingEntry &entry,
     {
         if (m_run_args.GetArgumentCount() > 0)
         {
-            for (int i = 0; i < m_run_args.GetArgumentCount(); ++i)
+            for (size_t i = 0; i < m_run_args.GetArgumentCount(); ++i)
                 value.AppendString (m_run_args.GetArgumentAtIndex (i));
         }
     }

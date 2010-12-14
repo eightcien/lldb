@@ -7,7 +7,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ClangPersistentVariables.h"
+#include <inttypes.h>
+
+#include "lldb/Expression/ClangPersistentVariables.h"
 #include "lldb/Core/DataExtractor.h"
 #include "lldb/Core/Log.h"
 #include "lldb/Core/StreamString.h"
@@ -39,7 +41,6 @@ ClangPersistentVariables::CreatePersistentVariable (const ConstString &name, con
 
     return var_sp;
 }
-
 
 ConstString
 ClangPersistentVariables::GetNextPersistentVariableName ()

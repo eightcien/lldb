@@ -66,18 +66,16 @@ public:
     DoLaunch(lldb_private::Module *module,
              char const *argv[],
              char const *envp[],
+             uint32_t launch_flags,
              const char *stdin_path,
              const char *stdout_path,
              const char *stderr_path);
-
-    virtual void
-    DidLaunch();
 
     virtual lldb_private::Error
     DoResume();
 
     virtual lldb_private::Error
-    DoHalt();
+    DoHalt(bool &caused_stop);
 
     virtual lldb_private::Error
     DoDetach();

@@ -779,7 +779,7 @@ DataExtractor::GetFloat (uint32_t *offset_ptr) const
         if (m_byte_order != eByteOrderHost)
         {
             uint8_t *dst_data = (uint8_t *)&val;
-            for (int i=0; i<sizeof(float_type); ++i)
+            for (unsigned int i=0; i<sizeof(float_type); ++i)
                 dst_data[sizeof(float_type) - 1 - i] = src_data[i];
         }
         else
@@ -805,7 +805,7 @@ DataExtractor::GetDouble (uint32_t *offset_ptr) const
         if (m_byte_order != eByteOrderHost)
         {
             uint8_t *dst_data = (uint8_t *)&val;
-            for (int i=0; i<sizeof(float_type); ++i)
+            for (unsigned int i=0; i<sizeof(float_type); ++i)
                 dst_data[sizeof(float_type) - 1 - i] = src_data[i];
         }
         else
@@ -832,7 +832,7 @@ DataExtractor::GetLongDouble (uint32_t *offset_ptr) const
         if (m_byte_order != eByteOrderHost)
         {
             uint8_t *dst_data = (uint8_t *)&val;
-            for (int i=0; i<sizeof(float_type); ++i)
+            for (unsigned int i=0; i<sizeof(float_type); ++i)
                 dst_data[sizeof(float_type) - 1 - i] = src_data[i];
         }
         else
@@ -1287,7 +1287,7 @@ DataExtractor::Dump
                 {
                     switch (ch)
                     {
-                    case '\e': s->Printf ("\\e", (uint8_t)ch); break;
+                    case '\033': s->Printf ("\\e", (uint8_t)ch); break;
                     case '\a': s->Printf ("\\a", ch); break;
                     case '\b': s->Printf ("\\b", ch); break;
                     case '\f': s->Printf ("\\f", ch); break;

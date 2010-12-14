@@ -339,7 +339,7 @@ char **
 Args::GetArgumentVector()
 {
     if (!m_argv.empty())
-        return (char **)&m_argv[0];
+        return const_cast<char **>(&m_argv[0]);
     return NULL;
 }
 
@@ -347,7 +347,7 @@ const char **
 Args::GetConstArgumentVector() const
 {
     if (!m_argv.empty())
-        return (const char **)&m_argv[0];
+        return const_cast<const char **>(&m_argv[0]);
     return NULL;
 }
 
@@ -852,7 +852,7 @@ Args::IsPositionalArgument (const char *arg)
         return false;
         
     bool is_positional = true;
-    char *cptr = (char *) arg;
+    char *cptr = const_cast<char *>(arg);
     
     if (cptr[0] == '%')
     {
@@ -1111,7 +1111,7 @@ Args::ParseArgsForCompletion
         int long_options_index = -1;
         
         val = ::getopt_long (dummy_vec.size() - 1,
-                             (char *const *) &dummy_vec.front(), 
+                             const_cast<char *const *>(&dummy_vec.front()),
                              sstr.GetData(), 
                              long_options,
                              &long_options_index);

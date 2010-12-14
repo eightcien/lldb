@@ -13,6 +13,7 @@
 // C++ Includes
 // Other libraries and framework includes
 #include "lldb/Target/Process.h"
+#include "lldb/Target/StopInfo.h"
 #include "lldb/Target/Target.h"
 
 #include "LinuxThread.h"
@@ -60,26 +61,6 @@ LinuxThread::GetInfo()
     return NULL;
 }
 
-uint32_t
-LinuxThread::GetStackFrameCount()
-{
-    return 0;
-}
-
-lldb::StackFrameSP
-LinuxThread::GetStackFrameAtIndex(uint32_t idx)
-{
-    if (idx == 0)
-    {
-        RegisterContextLinux *regs = GetRegisterContext();
-        StackFrame *frame = new StackFrame(
-            idx, *this, regs->GetFP(), regs->GetPC());
-        return lldb::StackFrameSP(frame);
-    }
-    else
-        return lldb::StackFrameSP();
-}
-
 RegisterContextLinux *
 LinuxThread::GetRegisterContext()
 {
@@ -104,26 +85,33 @@ LinuxThread::CreateRegisterContextForFrame(lldb_private::StackFrame *frame)
     return new RegisterContextLinux_x86_64(*this, frame);
 }
 
-bool
-LinuxThread::GetRawStopReason(StopInfo *stop_info)
+lldb::StopInfoSP
+LinuxThread::GetPrivateStopReason()
 {
-    stop_info->Clear();
+    lldb::StopInfoSP stop_info;
 
     switch (m_note)
     {
     default:
-        stop_info->SetStopReasonToNone();
         break;
 
     case eBreak:
-        stop_info->SetStopReasonWithBreakpointSiteID(m_breakpoint->GetID());
+        stop_info = StopInfo::CreateStopReasonWithBreakpointSiteID(
+            *this, m_breakpoint->GetID());
         break;
 
     case eTrace:
-        stop_info->SetStopReasonToTrace();
+        stop_info = StopInfo::CreateStopReasonToTrace(*this);
+        break;
     }
 
-    return true;
+    return stop_info;
+}
+
+Unwind *
+LinuxThread::GetUnwinder()
+{
+    return m_unwinder_ap.get();
 }
 
 bool

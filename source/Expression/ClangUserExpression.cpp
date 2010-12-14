@@ -36,6 +36,8 @@
 #include "lldb/Target/ThreadPlan.h"
 #include "lldb/Target/ThreadPlanCallUserExpression.h"
 
+#include "llvm/Support/Compiler.h"
+
 using namespace lldb_private;
 
 ClangUserExpression::ClangUserExpression (const char *expr,
@@ -43,12 +45,12 @@ ClangUserExpression::ClangUserExpression (const char *expr,
     m_expr_text(expr),
     m_expr_prefix(expr_prefix ? expr_prefix : ""),
     m_transformed_text(),
+    m_desired_type(NULL, NULL),
     m_jit_addr(LLDB_INVALID_ADDRESS),
     m_cplusplus(false),
     m_objectivec(false),
     m_needs_object_ptr(false),
-    m_const_object(false),
-    m_desired_type(NULL, NULL)
+    m_const_object(false)
 {
 }
 
@@ -125,7 +127,7 @@ ApplyObjcCastHack(std::string &expr)
 // hopefully we'll figure out a way to #include the same environment as is
 // present in the original source file rather than try to hack specific type
 // definitions in as needed.
-static void
+static LLVM_ATTRIBUTE_UNUSED void
 ApplyUnicharHack(std::string &expr)
 {
 #define UNICHAR_HACK_FROM "unichar"

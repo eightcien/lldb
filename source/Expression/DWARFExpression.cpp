@@ -607,8 +607,8 @@ DWARFExpression::GetDescription (Stream *s, lldb::DescriptionLevel level, addr_t
             }
             else
             {
-                if (m_data.GetAddressByteSize() == 4 && begin_addr_offset == 0xFFFFFFFFull ||
-                    m_data.GetAddressByteSize() == 8 && begin_addr_offset == 0xFFFFFFFFFFFFFFFFull)
+                if ((m_data.GetAddressByteSize() == 4 && begin_addr_offset == 0xFFFFFFFFull) ||
+                    (m_data.GetAddressByteSize() == 8 && begin_addr_offset == 0xFFFFFFFFFFFFFFFFull))
                 {
                     curr_base_addr = end_addr_offset + location_list_base_addr;
                     // We have a new base address
@@ -2227,7 +2227,7 @@ DWARFExpression::Evaluate
                     return false;
                 }
                 
-                if (size && (index >= size || index < 0))
+                if (size && ((uint64_t)index >= size || index < 0))
                 {
                     if (error_ptr)
                         error_ptr->SetErrorStringWithFormat("Out of bounds array access.  %lld is not in [0, %llu]", index, size);
@@ -2306,6 +2306,9 @@ DWARFExpression::Evaluate
                             
                             switch (source_value_type)
                             {
+                            default:
+                                assert(false && "unexpected value type");
+                                break;
                             case Value::eValueTypeLoadAddress:
                                 switch (target_value_type)
                                 {

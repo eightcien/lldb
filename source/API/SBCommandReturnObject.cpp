@@ -7,6 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <cstdio>
+
 #include "lldb/API/SBCommandReturnObject.h"
 #include "lldb/API/SBStream.h"
 

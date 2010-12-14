@@ -620,7 +620,7 @@ CommandInterpreter::BuildAliasResult (const char *alias_name, std::string &raw_i
                         result_str.Printf (" ");
                     if (value.compare ("<no_argument>") != 0)
                     {
-                        int index = GetOptionArgumentPosition (value.c_str());
+                        unsigned int index = GetOptionArgumentPosition (value.c_str());
                         if (index == 0)
                             result_str.Printf ("%s", value.c_str());
                         else if (index >= cmd_args.GetArgumentCount())
@@ -1266,7 +1266,7 @@ CommandInterpreter::BuildAliasCommandArgs (CommandObject *alias_cmd_obj,
                     new_args.AppendArgument (option.c_str());
                 if (value.compare ("<no-argument>") != 0)
                 {
-                    int index = GetOptionArgumentPosition (value.c_str());
+                    unsigned int index = GetOptionArgumentPosition (value.c_str());
                     if (index == 0)
                     {
                         // value was NOT a positional argument; must be a real value
@@ -1340,11 +1340,11 @@ CommandInterpreter::BuildAliasCommandArgs (CommandObject *alias_cmd_obj,
 }
 
 
-int
+unsigned int
 CommandInterpreter::GetOptionArgumentPosition (const char *in_string)
 {
-    int position = 0;   // Any string that isn't an argument position, i.e. '%' followed by an integer, gets a position
-                        // of zero.
+    unsigned int position = 0; // Any string that isn't an argument position, i.e. '%' followed by an integer, gets a position
+                               // of zero.
 
     char *cptr = (char *) in_string;
 
@@ -1362,7 +1362,7 @@ CommandInterpreter::GetOptionArgumentPosition (const char *in_string)
 
             // We've gotten to the end of the digits; are we at the end of the string?
             if (cptr[0] == '\0')
-                position = atoi (start);
+                position = (unsigned)atoi (start);
         }
     }
 

@@ -1194,6 +1194,16 @@ public:
     //------------------------------------------------------------------
     lldb::StateType
     GetState ();
+
+    //------------------------------------------------------------------
+    /// Override UserID::getID to ensure the result is of the expected 
+    /// type.
+    //------------------------------------------------------------------
+    lldb::pid_t
+    GetID () const 
+    {
+        return (lldb::pid_t)UserID::GetID();
+    }
     
     ExecutionResults
     RunThreadPlan (ExecutionContext &exe_ctx,    

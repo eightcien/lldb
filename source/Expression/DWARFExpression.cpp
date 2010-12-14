@@ -607,8 +607,8 @@ DWARFExpression::GetDescription (Stream *s, lldb::DescriptionLevel level, addr_t
             }
             else
             {
-                if (m_data.GetAddressByteSize() == 4 && begin_addr_offset == 0xFFFFFFFFull ||
-                    m_data.GetAddressByteSize() == 8 && begin_addr_offset == 0xFFFFFFFFFFFFFFFFull)
+                if ((m_data.GetAddressByteSize() == 4 && begin_addr_offset == 0xFFFFFFFFull) ||
+                    (m_data.GetAddressByteSize() == 8 && begin_addr_offset == 0xFFFFFFFFFFFFFFFFull))
                 {
                     curr_base_addr = end_addr_offset + location_list_base_addr;
                     // We have a new base address

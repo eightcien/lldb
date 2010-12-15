@@ -60,15 +60,17 @@ private:
     struct CIE
     {
         dw_offset_t cie_offset;
+        lldb_private::UnwindPlan::Row initial_row;
         uint8_t     version;
-        char        augmentation[CFI_AUG_MAX_SIZE];  // This is typically empty or very short.
         uint32_t    code_align;
         int32_t     data_align;
         uint32_t    return_addr_reg_num;
         dw_offset_t inst_offset;        // offset of CIE instructions in mCFIData
         uint32_t    inst_length;        // length of CIE instructions in mCFIData
         uint8_t     ptr_encoding;
-        lldb_private::UnwindPlan::Row initial_row;
+        char        augmentation[CFI_AUG_MAX_SIZE];  // This is typically empty or very short.
+
+
 
         CIE(dw_offset_t offset) : cie_offset(offset), initial_row(), version (-1),
                                   code_align (0), data_align (0), return_addr_reg_num (-1),
@@ -79,8 +81,9 @@ private:
 
     struct FDEEntry
     {
-        AddressRange bounds;   // function bounds
         dw_offset_t offset;    // offset to this FDE within the Section
+        AddressRange bounds;   // function bounds
+
 
         FDEEntry () : offset (0), bounds () { }
 
@@ -114,16 +117,14 @@ private:
     ObjectFile&                 m_objfile;
     lldb::SectionSP             m_section;
     uint32_t                    m_reg_kind;
-    Flags                       m_flags;
     cie_map_t                   m_cie_map;
-
     DataExtractor               m_cfi_data;
     bool                        m_cfi_data_initialized;   // only copy the section into the DE once
 
     std::vector<FDEEntry>       m_fde_index;
     bool                        m_fde_index_initialized;  // only scan the section for FDEs once
-
     bool                        m_is_eh_frame;
+    Flags                       m_flags;
 
     CIESP
     ParseCIE (const uint32_t cie_offset);

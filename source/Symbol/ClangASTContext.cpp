@@ -1213,8 +1213,7 @@ ClangASTContext::AddMethodToCXXRecordType
     cxx_method_decl->setVirtualAsWritten (is_virtual);
     
     // Populate the method decl with parameter decls
-    
-    ParmVarDecl *params[num_params];
+    llvm::SmallVector<ParmVarDecl*, 16> params(num_params);
     
     for (int param_index = 0;
          param_index < num_params;
@@ -1231,7 +1230,7 @@ ClangASTContext::AddMethodToCXXRecordType
                                                    NULL); 
     }
     
-    cxx_method_decl->setParams (params, num_params);
+    cxx_method_decl->setParams (&params[0], num_params);
     
     cxx_record_decl->addDecl (cxx_method_decl);
     

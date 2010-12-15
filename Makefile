@@ -60,9 +60,6 @@ CXX.Flags += -fno-strict-aliasing
 # "#pragma mark" construct which GCC warns about on platforms other than Darwin.
 EXTRA_OPTIONS += -Wno-unknown-pragmas
 
-# Don't warn about variable length arrays. GCC 4.3 doesn't seem to like them very much.
-EXTRA_OPTIONS += -Wno-vla
-
 ###
 # LLDB Top Level specific stuff.
 

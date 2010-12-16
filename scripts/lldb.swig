@@ -97,7 +97,8 @@
 %}
 
 /* Various liblldb typedefs that SWIG needs to know about.  */
-#include <stdint.h>
+#define __extension__ /* Undefine GCC keyword to make Swig happy when processing glibc's stdint.h. */
+%include <stdint.h>
 %include "lldb/lldb-defines.h"
 %include "lldb/lldb-enumerations.h"
 %include "lldb/lldb-forward.h"

@@ -310,7 +310,7 @@ SBBreakpoint::SetThreadIndex (uint32_t index)
 uint32_t
 SBBreakpoint::GetThreadIndex() const
 {
-    uint32_t thread_idx = 0;
+    uint32_t thread_idx = UINT32_MAX;
     if (m_opaque_sp)
     {
         const ThreadSpec *thread_spec = m_opaque_sp->GetOptions()->GetThreadSpec();

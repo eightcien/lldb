@@ -24,6 +24,9 @@
 #include "Plugins/SymbolFile/DWARF/SymbolFileDWARF.h"
 #include "Plugins/SymbolFile/DWARF/SymbolFileDWARFDebugMap.h"
 #include "Plugins/SymbolFile/Symtab/SymbolFileSymtab.h"
+#include "Plugins/Process/Utility/UnwindAssemblyProfiler-x86.h"
+#include "Plugins/Process/Utility/ArchDefaultUnwindPlan-x86.h"
+#include "Plugins/Process/Utility/ArchVolatileRegs-x86.h"
 
 #ifdef __APPLE__
 #include "Plugins/ABI/MacOSX-i386/ABIMacOSX_i386.h"
@@ -36,9 +39,6 @@
 #include "Plugins/ObjectFile/Mach-O/ObjectFileMachO.h"
 #include "Plugins/Process/MacOSX-User/source/ProcessMacOSX.h"
 #include "Plugins/Process/gdb-remote/ProcessGDBRemote.h"
-#include "Plugins/Process/Utility/UnwindAssemblyProfiler-x86.h"
-#include "Plugins/Process/Utility/ArchDefaultUnwindPlan-x86.h"
-#include "Plugins/Process/Utility/ArchVolatileRegs-x86.h"
 #endif
 
 #ifdef __linux__
@@ -73,11 +73,11 @@ lldb_private::Initialize ()
         SymbolFileDWARF::Initialize();
         SymbolFileDWARFDebugMap::Initialize();
         SymbolFileSymtab::Initialize();
-
-#ifdef __APPLE__
         UnwindAssemblyProfiler_x86::Initialize();
         ArchDefaultUnwindPlan_x86::Initialize();
         ArchVolatileRegs_x86::Initialize();
+
+#ifdef __APPLE__
         ABIMacOSX_i386::Initialize();
         ABISysV_x86_64::Initialize();
         DynamicLoaderMacOSXDYLD::Initialize();
@@ -112,11 +112,11 @@ lldb_private::Terminate ()
     SymbolFileDWARF::Terminate();
     SymbolFileDWARFDebugMap::Terminate();
     SymbolFileSymtab::Terminate();
-
-#ifdef __APPLE__
     UnwindAssemblyProfiler_x86::Terminate();
     ArchDefaultUnwindPlan_x86::Terminate();
     ArchVolatileRegs_x86::Terminate();
+
+#ifdef __APPLE__
     DynamicLoaderMacOSXDYLD::Terminate();
     ItaniumABILanguageRuntime::Terminate();
     AppleObjCRuntimeV2::Terminate();

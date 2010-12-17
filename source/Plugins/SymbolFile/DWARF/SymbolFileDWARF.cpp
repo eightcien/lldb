@@ -521,7 +521,7 @@ SymbolFileDWARF::ParseCompileUnit (DWARFCompileUnit* curr_cu, CompUnitSP& compil
             {
                 FileSpec cu_file_spec;
 
-                if (cu_die_name[0] == '/' || cu_comp_dir == NULL && cu_comp_dir[0])
+                if (cu_die_name[0] == '/' || (cu_comp_dir == NULL && cu_comp_dir[0]))
                 {
                     // If we have a full path to the compile unit, we don't need to resolve
                     // the file.  This can be expensive e.g. when the source files are NFS mounted.

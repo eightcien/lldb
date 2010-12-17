@@ -1109,7 +1109,7 @@ DWARFDebugInfo::Dump (Stream *s, const uint32_t die_offset, const uint32_t recur
     for (pos = m_compile_units.begin(); pos != m_compile_units.end(); ++pos)
     {
         const DWARFCompileUnitSP& cu_sp = *pos;
-        DumpCallback(m_dwarf2Data, (DWARFCompileUnitSP&)cu_sp, NULL, 0, curr_depth, &dumpInfo);
+        DumpCallback(m_dwarf2Data, const_cast<DWARFCompileUnitSP&>(cu_sp), NULL, 0, curr_depth, &dumpInfo);
         cu_sp->DIE()->Dump(m_dwarf2Data, cu_sp.get(), s, recurse_depth);
     }
 }

@@ -33,6 +33,7 @@ USEDLIBS = lldbAPI.a \
 	lldbPluginObjectFileELF.a \
 	lldbPluginSymbolFileDWARF.a \
 	lldbPluginSymbolFileSymtab.a \
+	lldbPluginUtility.a \
 	lldbSymbol.a \
 	lldbTarget.a \
 	lldbUtility.a \
@@ -62,8 +63,7 @@ ifeq ($(HOST_OS),Darwin)
               lldbPluginObjectContainerUniversalMachO.a \
               lldbPluginObjectFileMachO.a \
               lldbPluginProcessGDBRemote.a \
-              lldbPluginSymbolVendorMacOSX.a \
-              lldbPluginUtility.a 
+              lldbPluginSymbolVendorMacOSX.a
 endif
 
 ifeq ($(HOST_OS),Linux)

@@ -590,6 +590,18 @@ ValueObject::GetObjectDescription (ExecutionContextScope *exe_scope)
     lldb::LanguageType language = GetObjectRuntimeLanguage();
     LanguageRuntime *runtime = process->GetLanguageRuntime(language);
     
+    if (runtime == NULL)
+    {
+        // Aw, hell, if the things a pointer, let's try ObjC anyway...
+        clang_type_t opaque_qual_type = GetClangType();
+        if (opaque_qual_type != NULL)
+        {
+            clang::QualType qual_type (clang::QualType::getFromOpaquePtr(opaque_qual_type).getNonReferenceType());
+            if (qual_type->isAnyPointerType())
+                runtime = process->GetLanguageRuntime(lldb::eLanguageTypeObjC);
+        }
+    }
+    
     if (runtime && runtime->GetObjectDescription(s, *this, exe_scope))
     {
         m_object_desc_str.append (s.GetData());
@@ -1203,7 +1215,7 @@ ValueObject::CreateConstantValue (ExecutionContextScope *exe_scope, const ConstS
 }
 
 lldb::ValueObjectSP
-ValueObject::Dereference (ExecutionContextScope *exe_scope, Error &error)
+ValueObject::Dereference (Error &error)
 {
     lldb::ValueObjectSP valobj_sp;
     const bool is_pointer_type = IsPointerType();

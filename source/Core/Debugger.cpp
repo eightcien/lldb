@@ -186,6 +186,7 @@ Debugger::Debugger () :
 
 Debugger::~Debugger ()
 {
+    CleanUpInputReaders();
     int num_targets = m_target_list.GetNumTargets();
     for (int i = 0; i < num_targets; i++)
     {
@@ -388,6 +389,24 @@ Debugger::DispatchInputEndOfFile ()
             reader_sp->Notify (eInputReaderEndOfFile);
 
         while (CheckIfTopInputReaderIsDone ()) ;
+    }
+}
+
+void
+Debugger::CleanUpInputReaders ()
+{
+    m_input_reader_data.clear();
+    
+    while (m_input_readers.size() > 1)
+    {
+        while (CheckIfTopInputReaderIsDone ()) ;
+        
+        InputReaderSP reader_sp (m_input_readers.top());
+        if (reader_sp)
+        {
+            reader_sp->Notify (eInputReaderEndOfFile);
+            reader_sp->SetIsDone (true);
+        }
     }
 }
 

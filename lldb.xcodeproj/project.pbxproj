@@ -377,6 +377,7 @@
 		AF68D2561255416E002FF25B /* RegisterContextLLDB.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AF68D2541255416E002FF25B /* RegisterContextLLDB.cpp */; };
 		AF68D3311255A111002FF25B /* UnwindLLDB.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AF68D32F1255A110002FF25B /* UnwindLLDB.cpp */; };
 		AF94005911C03F6500085DB9 /* SymbolVendor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AF94005711C03F6500085DB9 /* SymbolVendor.cpp */; };
+		B296983712C2FB98002D92C3 /* CommandObjectVersion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B296983412C2FB2B002D92C3 /* CommandObjectVersion.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1081,6 +1082,8 @@
 		AF68D32F1255A110002FF25B /* UnwindLLDB.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = UnwindLLDB.cpp; path = Utility/UnwindLLDB.cpp; sourceTree = "<group>"; };
 		AF68D3301255A110002FF25B /* UnwindLLDB.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = UnwindLLDB.h; path = Utility/UnwindLLDB.h; sourceTree = "<group>"; };
 		AF94005711C03F6500085DB9 /* SymbolVendor.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = SymbolVendor.cpp; path = source/Symbol/SymbolVendor.cpp; sourceTree = "<group>"; };
+		B296983412C2FB2B002D92C3 /* CommandObjectVersion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = CommandObjectVersion.cpp; path = source/Commands/CommandObjectVersion.cpp; sourceTree = "<group>"; };
+		B296983512C2FB2B002D92C3 /* CommandObjectVersion.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = CommandObjectVersion.h; path = source/Commands/CommandObjectVersion.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1884,6 +1887,8 @@
 				269416AD119A024800FF2715 /* CommandObjectTarget.cpp */,
 				26BC7D2D10F1B76300F91463 /* CommandObjectThread.h */,
 				26BC7E4610F1B84700F91463 /* CommandObjectThread.cpp */,
+				B296983512C2FB2B002D92C3 /* CommandObjectVersion.h */,
+				B296983412C2FB2B002D92C3 /* CommandObjectVersion.cpp */,
 			);
 			name = Commands;
 			sourceTree = "<group>";
@@ -2786,6 +2791,7 @@
 				4CC2A149128C73ED001531C4 /* ThreadPlanTracer.cpp in Sources */,
 				266A42D6128E3FFB0090CF7C /* ClangNamespaceDecl.cpp in Sources */,
 				4C7CF7E61295E12B00B4FBB5 /* ThreadPlanCallUserExpression.cpp in Sources */,
+				B296983712C2FB98002D92C3 /* CommandObjectVersion.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2920,9 +2926,9 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 36;
+				DYLIB_CURRENT_VERSION = 37;
 				EXPORTED_SYMBOLS_FILE = "resources/lldb-framework-exports";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -2972,11 +2978,11 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 36;
+				DYLIB_CURRENT_VERSION = 37;
 				EXPORTED_SYMBOLS_FILE = "resources/lldb-framework-exports";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -3046,7 +3052,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COPY_PHASE_STRIP = YES;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -3081,11 +3087,11 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				COPY_PHASE_STRIP = YES;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 36;
+				DYLIB_CURRENT_VERSION = 37;
 				EXPORTED_SYMBOLS_FILE = "resources/lldb-framework-exports";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -3134,7 +3140,7 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = lldb_codesign;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"$(SYSTEM_LIBRARY_DIR)/PrivateFrameworks\"",
@@ -3172,7 +3178,7 @@
 				);
 				CODE_SIGN_IDENTITY = lldb_codesign;
 				COPY_PHASE_STRIP = YES;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",

@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <cstring>
+#include <string.h>
 
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBStream.h"

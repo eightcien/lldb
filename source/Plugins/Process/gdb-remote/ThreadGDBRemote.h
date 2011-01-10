@@ -14,7 +14,6 @@
 
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Thread.h"
-#include "libunwind/include/libunwind.h"
 
 class StringExtractor;
 class ProcessGDBRemote;
@@ -42,10 +41,10 @@ public:
     virtual const char *
     GetQueueName ();
 
-    virtual lldb_private::RegisterContext *
+    virtual lldb::RegisterContextSP
     GetRegisterContext ();
 
-    virtual lldb_private::RegisterContext *
+    virtual lldb::RegisterContextSP
     CreateRegisterContextForFrame (lldb_private::StackFrame *frame);
 
     virtual bool

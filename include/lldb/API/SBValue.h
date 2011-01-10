@@ -48,6 +48,12 @@ public:
     bool
     IsInScope (const lldb::SBFrame &frame);
 
+    lldb::Format
+    GetFormat () const;
+    
+    void
+    SetFormat (lldb::Format format);
+
     const char *
     GetValue (const lldb::SBFrame &frame);
 
@@ -84,9 +90,6 @@ public:
 
     uint32_t
     GetNumChildren ();
-
-    bool
-    ValueIsStale ();
 
     void *
     GetOpaqueType();

@@ -35,6 +35,7 @@
 #include "../Commands/CommandObjectSyntax.h"
 #include "../Commands/CommandObjectTarget.h"
 #include "../Commands/CommandObjectThread.h"
+#include "../Commands/CommandObjectVersion.h"
 
 #include "lldb/Interpreter/Args.h"
 #include "lldb/Core/Debugger.h"
@@ -166,6 +167,7 @@ CommandInterpreter::LoadCommandDictionary ()
     m_command_dict["source"]    = CommandObjectSP (new CommandObjectMultiwordSource (*this));
     m_command_dict["target"]    = CommandObjectSP (new CommandObjectMultiwordTarget (*this));
     m_command_dict["thread"]    = CommandObjectSP (new CommandObjectMultiwordThread (*this));
+    m_command_dict["version"]   = CommandObjectSP (new CommandObjectVersion (*this));
 
     std::auto_ptr<CommandObjectRegexCommand>
     break_regex_cmd_ap(new CommandObjectRegexCommand (*this,

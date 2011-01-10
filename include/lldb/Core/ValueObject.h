@@ -207,7 +207,7 @@ public:
     CreateConstantValue (ExecutionContextScope *exe_scope, const ConstString &name);
 
     virtual lldb::ValueObjectSP
-    Dereference (ExecutionContextScope *exe_scope, Error &error);
+    Dereference (Error &error);
     
     virtual lldb::ValueObjectSP
     AddressOf (Error &error);
@@ -260,6 +260,8 @@ public:
     void
     SetFormat (lldb::Format format)
     {
+        if (format != m_format)
+            m_value_str.clear();
         m_format = format;
     }
 

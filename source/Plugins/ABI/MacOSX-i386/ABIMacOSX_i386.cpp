@@ -61,7 +61,7 @@ ABIMacOSX_i386::PrepareTrivialCall (Thread &thread,
                                     lldb::addr_t *this_arg,
                                     lldb::addr_t *cmd_arg) const
 {
-    RegisterContext *reg_ctx = thread.GetRegisterContext();
+    RegisterContext *reg_ctx = thread.GetRegisterContext().get();
     if (!reg_ctx)
         return false;    
 #define CHAIN_EBP
@@ -97,9 +97,9 @@ ABIMacOSX_i386::PrepareTrivialCall (Thread &thread,
         
         if (thread.GetProcess().WriteMemory(sp, &this_argU32, sizeof(this_argU32), error) != sizeof(this_argU32))
             return false;
-        if (thread.GetProcess().WriteMemory(sp, &cmd_argU32, sizeof(cmd_argU32), error) != sizeof(cmd_argU32))
+        if (thread.GetProcess().WriteMemory(sp + 4, &cmd_argU32, sizeof(cmd_argU32), error) != sizeof(cmd_argU32))
             return false;
-        if (thread.GetProcess().WriteMemory(sp + 4, &argU32, sizeof(argU32), error) != sizeof(argU32))
+        if (thread.GetProcess().WriteMemory(sp + 8, &argU32, sizeof(argU32), error) != sizeof(argU32))
             return false;
     }
     else if (this_arg)
@@ -154,7 +154,7 @@ ABIMacOSX_i386::PrepareNormalCall (Thread &thread,
                                    lldb::addr_t returnAddress,
                                    ValueList &args) const
 {
-    RegisterContext *reg_ctx = thread.GetRegisterContext();
+    RegisterContext *reg_ctx = thread.GetRegisterContext().get();
     if (!reg_ctx)
         return false;
     Error error;
@@ -422,7 +422,7 @@ ABIMacOSX_i386::GetArgumentValues (Thread &thread,
     // Get the pointer to the first stack argument so we have a place to start 
     // when reading data
     
-    RegisterContext *reg_ctx = thread.GetRegisterContext();
+    RegisterContext *reg_ctx = thread.GetRegisterContext().get();
     
     if (!reg_ctx)
         return false;
@@ -498,7 +498,7 @@ ABIMacOSX_i386::GetReturnValue (Thread &thread,
             // Get the pointer to the first stack argument so we have a place to start 
             // when reading data
             
-            RegisterContext *reg_ctx = thread.GetRegisterContext();
+            RegisterContext *reg_ctx = thread.GetRegisterContext().get();
             
             void *value_type = value.GetClangType();
             bool is_signed;

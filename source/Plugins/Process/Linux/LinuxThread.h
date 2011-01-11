@@ -74,6 +74,7 @@ private:
     std::auto_ptr<lldb_private::StackFrame> m_frame_ap;
 
     lldb::BreakpointSiteSP m_breakpoint;
+    lldb::StopInfoSP m_stop_info;
 
     enum Notification {
         eNone,
@@ -88,6 +89,9 @@ private:
 
     lldb::StopInfoSP
     GetPrivateStopReason();
+
+    void
+    RefreshPrivateStopReason();
 
     lldb_private::Unwind *
     GetUnwinder();

@@ -30,6 +30,11 @@ LinuxThread::LinuxThread(Process &process, lldb::tid_t tid)
 {
 }
 
+LinuxThread::~LinuxThread()
+{
+    DestroyThread();
+}
+
 ProcessMonitor &
 LinuxThread::GetMonitor()
 {

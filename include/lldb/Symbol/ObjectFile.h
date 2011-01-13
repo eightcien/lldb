@@ -182,8 +182,8 @@ public:
     ///     The virtual address of the entry point or 
     ///     LLDB_INVALID_ADDRESS if an entry point is not defined.
     //------------------------------------------------------------------
-    virtual lldb::addr_t
-    GetEntryPoint () const { return LLDB_INVALID_ADDRESS; }
+    virtual lldb_private::Address
+    GetEntryPoint () { return Address(); }
     
     //------------------------------------------------------------------
     /// Returns the offset into a file at which this object resides.

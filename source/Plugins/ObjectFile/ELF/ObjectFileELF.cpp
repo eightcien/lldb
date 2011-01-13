@@ -159,16 +159,16 @@ ObjectFileELF::~ObjectFileELF()
 bool
 ObjectFileELF::IsExecutable() const
 {
-    return m_header.e_type == ET_EXEC;
+    return m_header.e_entry != 0;
 }
 
-addr_t
-ObjectFileELF::GetEntryPoint() const
+Address
+ObjectFileELF::GetEntryPoint()
 {
     if (m_header.e_entry)
-        return m_header.e_entry;
+        return Address(NULL, m_header.e_entry);
     else
-        return LLDB_INVALID_ADDRESS;
+        return Address();
 }
 
 ByteOrder

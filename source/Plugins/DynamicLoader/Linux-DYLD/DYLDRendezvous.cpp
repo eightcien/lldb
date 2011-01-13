@@ -177,7 +177,7 @@ DYLDRendezvous::ReadStringFromMemory(addr_t addr)
 }
 
 void
-DYLDRendezvous::DumpToLog(LogSP log)
+DYLDRendezvous::DumpToLog(LogSP log) const
 {
     int state = GetState();
 

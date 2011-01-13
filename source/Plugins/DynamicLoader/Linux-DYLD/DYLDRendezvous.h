@@ -54,7 +54,7 @@ public:
     GetLDBase() const { return m_ldbase; }
 
     void
-    DumpToLog(lldb::LogSP log);
+    DumpToLog(lldb::LogSP log) const;
 
     /// @brief Constants describing the state of the rendezvous.
     ///

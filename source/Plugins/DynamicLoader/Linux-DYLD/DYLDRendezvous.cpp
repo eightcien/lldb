@@ -7,8 +7,6 @@
 
 #include "DYLDRendezvous.h"
 
-#include <iostream>
-
 using namespace lldb;
 using namespace lldb_private;
 
@@ -58,29 +56,32 @@ DYLDRendezvous::DYLDRendezvous(Process *process)
 bool
 DYLDRendezvous::Resolve()
 {
+    const size_t word_size = 4;
     size_t address_size;
+    size_t padding;
     addr_t info_addr;
     addr_t cursor;
 
     address_size = m_process->GetTarget().GetArchitecture().GetAddressByteSize();
+    padding = address_size - word_size;
     cursor = info_addr = ResolveRendezvousAddress(m_process);
 
     if (cursor == LLDB_INVALID_ADDRESS)
         return false;
 
-    if (!(cursor = ReadMemory(cursor, &m_version, 4)))
+    if (!(cursor = ReadMemory(cursor, &m_version, word_size)))
         return false;
 
-    if (!(cursor = ReadMemory(cursor + 4, &m_map_addr, address_size)))
+    if (!(cursor = ReadMemory(cursor + padding, &m_map_addr, address_size)))
         return false;
 
     if (!(cursor = ReadMemory(cursor, &m_brk, address_size)))
         return false;
 
-    if (!(cursor = ReadMemory(cursor, &m_state, 4)))
+    if (!(cursor = ReadMemory(cursor, &m_state, word_size)))
         return false;
 
-    if (!(cursor = ReadMemory(cursor + 4, &m_ldbase, address_size)))
+    if (!(cursor = ReadMemory(cursor + padding, &m_ldbase, address_size)))
         return false;
 
     m_rendezvous_addr = info_addr;    

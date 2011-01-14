@@ -188,6 +188,12 @@ DynamicLoaderLinuxDYLD::ProbeEntry()
     entry_break->SetCallback(EntryBreakpointHit, this, true);
 }
 
+// The runtime linker has run and initialized the rendezvous structure once the
+// process has hit its entry point.  When we hit the corresponding breakpoint we
+// interrogate the rendezvous structure to get the load addresses of all
+// dependent modules for the process.  Similarly, we can discover the runtime
+// linker function and setup a breakpoint to notify us of any dynamically loaded
+// modules (via dlopen).
 bool
 DynamicLoaderLinuxDYLD::EntryBreakpointHit(void *baton, 
                                            StoppointCallbackContext *context, 

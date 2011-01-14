@@ -107,9 +107,9 @@ RegisterContextLLDB::InitializeZerothFrame()
     
     m_current_pc = frame_sp->GetFrameCodeAddress();
 
-    static ConstString sigtramp_name ("_sigtramp");
-    if ((m_sym_ctx.function && m_sym_ctx.function->GetMangled().GetMangledName() == sigtramp_name)
-        || (m_sym_ctx.symbol && m_sym_ctx.symbol->GetMangled().GetMangledName() == sigtramp_name))
+    static ConstString g_sigtramp_name ("_sigtramp");
+    if ((m_sym_ctx.function && m_sym_ctx.function->GetName() == g_sigtramp_name) ||
+        (m_sym_ctx.symbol   && m_sym_ctx.symbol->GetName()   == g_sigtramp_name))
     {
         m_frame_type = eSigtrampFrame;
     }
@@ -184,8 +184,11 @@ RegisterContextLLDB::InitializeZerothFrame()
     if (log)
     {
         log->Printf("%*sThread %d Frame %u initialized frame current pc is 0x%llx cfa is 0x%llx using %s UnwindPlan", 
-                    m_frame_number < 100 ? m_frame_number : 100, "", m_thread.GetIndexID(), m_frame_number,
-                    (uint64_t) m_current_pc.GetLoadAddress (&m_thread.GetProcess().GetTarget()), (uint64_t) m_cfa,
+                    m_frame_number < 100 ? m_frame_number : 100, "", 
+                    m_thread.GetIndexID(), 
+                    m_frame_number,
+                    (uint64_t) m_current_pc.GetLoadAddress (&m_thread.GetProcess().GetTarget()), 
+                    (uint64_t) m_cfa,
                     m_full_unwind_plan->GetSourceName().GetCString());
     }
 }
@@ -309,7 +312,7 @@ RegisterContextLLDB::InitializeNonZerothFrame()
     if (m_sym_ctx_valid == false)
        decr_pc_and_recompute_addr_range = true;
 
-    // Or if we're in the middle of the stack (and not "above" an asynchornous event like sigtramp),
+    // Or if we're in the middle of the stack (and not "above" an asynchronous event like sigtramp),
     // and our "current" pc is the start of a function...
     if (m_sym_ctx_valid
         && ((RegisterContextLLDB*) m_next_frame.get())->m_frame_type != eSigtrampFrame
@@ -630,7 +633,7 @@ RegisterContextLLDB::GetFullUnwindPlanForFrame ()
 
 
 void
-RegisterContextLLDB::Invalidate ()
+RegisterContextLLDB::InvalidateAllRegisters ()
 {
     m_frame_type = eNotAValidFrame;
 }

@@ -290,7 +290,7 @@ ValueObject::GetIndexOfChildWithName (const ConstString &name)
 ValueObjectSP
 ValueObject::GetChildMemberWithName (const ConstString &name, bool can_create)
 {
-    // when getting a child by name, it could be burried inside some base
+    // when getting a child by name, it could be buried inside some base
     // classes (which really aren't part of the expression path), so we
     // need a vector of indexes that can get us down to the correct child
     std::vector<uint32_t> child_indexes;
@@ -383,7 +383,7 @@ ValueObject::CreateChildAtIndex (uint32_t idx, bool synthetic_array_member, int3
                                                                   child_bitfield_bit_size,
                                                                   child_bitfield_bit_offset,
                                                                   child_is_base_class);
-    if (child_clang_type)
+    if (child_clang_type && child_byte_size)
     {
         if (synthetic_index)
             child_byte_offset += child_byte_size * synthetic_index;
@@ -1245,7 +1245,7 @@ ValueObject::Dereference (Error &error)
                                                                       child_bitfield_bit_size,
                                                                       child_bitfield_bit_offset,
                                                                       child_is_base_class);
-        if (child_clang_type)
+        if (child_clang_type && child_byte_size)
         {
             ConstString child_name;
             if (!child_name_str.empty())
@@ -1316,7 +1316,7 @@ ValueObject::AddressOf (Error &error)
                                                                  ClangASTContext::CreatePointerType (ast, clang_type),
                                                                  ConstString (name.c_str()),
                                                                  addr, 
-                                                                 address_type,
+                                                                 eAddressTypeInvalid,
                                                                  m_data.GetAddressByteSize()));
                 }
             }

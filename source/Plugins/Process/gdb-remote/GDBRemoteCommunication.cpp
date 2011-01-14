@@ -164,7 +164,7 @@ GDBRemoteCommunication::SendPacketAndWaitForResponse
 //class ScopedValueChanger
 //{
 //public:
-//    // Take a value reference and the value to assing it to when this class
+//    // Take a value reference and the value to assign it to when this class
 //    // instance goes out of scope.
 //    ScopedValueChanger (_Tp &value_ref, _Tp value) :
 //        m_value_ref (value_ref),
@@ -180,7 +180,7 @@ GDBRemoteCommunication::SendPacketAndWaitForResponse
 //        m_value_ref = m_value;
 //    }
 //protected:
-//    _Tp &m_value_ref;   // A reference to the value we wil change when this object destructs
+//    _Tp &m_value_ref;   // A reference to the value we will change when this object destructs
 //    _Tp m_value;        // The value to assign to m_value_ref when this goes out of scope.
 //};
 
@@ -517,18 +517,25 @@ GDBRemoteCommunication::WaitForPacketNoLock (StringExtractorGDBRemote &response,
                     std::string &response_str = response.GetStringRef();
                     if (packet_data[0] == '$')
                     {
-                        assert (packet_size >= 4);  // Must have at least '$#CC' where CC is checksum
-                        assert (packet_data[packet_size-3] == '#');
-                        assert (::isxdigit (packet_data[packet_size-2]));  // Must be checksum hex byte
-                        assert (::isxdigit (packet_data[packet_size-1]));  // Must be checksum hex byte
-                        response_str.assign (packet_data + 1, packet_size - 4);
+                        bool success = false;
+                        if (packet_size < 4)
+                            ::fprintf (stderr, "Packet that starts with $ is too short: '%s'\n", packet_data);
+                        else if (packet_data[packet_size-3] != '#' || 
+                                 !::isxdigit (packet_data[packet_size-2]) || 
+                                 !::isxdigit (packet_data[packet_size-1]))
+                            ::fprintf (stderr, "Invalid checksum footer for packet: '%s'\n", packet_data);
+                        else
+                            success = true;
+                        
+                        if (success)
+                            response_str.assign (packet_data + 1, packet_size - 4);
                         if (m_send_acks)
                         {
                             char packet_checksum = strtol (&packet_data[packet_size-2], NULL, 16);
                             char actual_checksum = CalculcateChecksum (&response_str[0], response_str.size());
                             checksum_error = packet_checksum != actual_checksum;
                             // Send the ack or nack if needed
-                            if (checksum_error)
+                            if (checksum_error || !success)
                                 SendAck('-');
                             else
                                 SendAck('+');
@@ -852,7 +859,7 @@ GDBRemoteCommunication::DeallocateMemory (addr_t addr, uint32_t timeout_seconds)
     StringExtractorGDBRemote response;
     if (SendPacketAndWaitForResponse (packet, response, timeout_seconds, false))
     {
-        if (!response.IsOKPacket())
+        if (response.IsOKPacket())
             return true;
     }
     return false;

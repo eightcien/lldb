@@ -198,7 +198,7 @@ void
 ThreadMacOSX::RefreshStateAfterStop()
 {
     // Invalidate all registers in our register context
-    GetRegisterContext()->Invalidate();
+    GetRegisterContext()->InvalidateIfNeeded (false);
 
     m_context->RefreshStateAfterStop();
 
@@ -440,7 +440,7 @@ ThreadMacOSX::Dump(Log *log, uint32_t index)
     case TH_STATE_STOPPED:          thread_run_state = "stopped"; break;    // 2 thread is stopped
     case TH_STATE_WAITING:          thread_run_state = "waiting"; break;    // 3 thread is waiting normally
     case TH_STATE_UNINTERRUPTIBLE:  thread_run_state = "uninter"; break;    // 4 thread is in an uninterruptible wait
-    case TH_STATE_HALTED:           thread_run_state = "halted "; break;     // 5 thread is halted at a
+    case TH_STATE_HALTED:           thread_run_state = "halted "; break;    // 5 thread is halted at a
     default:                        thread_run_state = "???"; break;
     }
 
@@ -650,7 +650,7 @@ ThreadMacOSX::RestoreSaveFrameZero (const RegisterCheckpoint &checkpoint)
 
         // Clear out all stack frames as our world just changed.
         ClearStackFrames();
-        frame_sp->GetRegisterContext()->Invalidate();
+        frame_sp->GetRegisterContext()->InvalidateIfNeeded(true);
 
         return ret;
     }

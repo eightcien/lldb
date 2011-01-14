@@ -199,7 +199,6 @@ public:
     void
     ValueUpdated ();
 
-
     typedef lldb::SharedPtr<ValueObjectConstResult>::Type ValueObjectConstResultSP;
 
     //----------------------------------------------------------------------
@@ -207,9 +206,22 @@ public:
     //----------------------------------------------------------------------
     std::auto_ptr<ParserVars> m_parser_vars;
     std::auto_ptr<JITVars> m_jit_vars;
-    //ValueObjectConstResultSP m_valojb_sp;
-    lldb::ValueObjectSP m_valojb_sp;
-
+    
+    enum Flags 
+    {
+        EVNone                  = 0,
+        EVIsLLDBAllocated       = 1 << 0,   ///< This variable is resident in a location specifically allocated for it by LLDB in the target process
+        EVIsProgramReference    = 1 << 1,   ///< This variable is a reference to a (possibly invalid) area managed by the target program
+        EVNeedsAllocation       = 1 << 2,   ///< Space for this variable has yet to be allocated in the target process
+        EVIsFreezeDried         = 1 << 3,   ///< This variable's authoritative version is in m_frozen_sp (for example, for statically-computed results)
+        EVNeedsFreezeDry        = 1 << 4,   ///< Copy from m_live_sp to m_frozen_sp during dematerialization
+        EVKeepInTarget          = 1 << 5    ///< Keep the allocation after the expression is complete rather than freeze drying its contents and freeing it
+    };
+    
+    uint16_t m_flags; // takes elements of Flags
+    
+    lldb::ValueObjectSP m_frozen_sp;
+    lldb::ValueObjectSP m_live_sp;
 private:
     DISALLOW_COPY_AND_ASSIGN (ClangExpressionVariable);
 };
@@ -226,13 +238,13 @@ public:
     //----------------------------------------------------------------------
     /// Implementation of methods in ClangExpressionVariableListBase
     //----------------------------------------------------------------------
-    virtual size_t 
+    size_t 
     GetSize()
     {
         return m_variables.size();
     }
     
-    virtual lldb::ClangExpressionVariableSP
+    lldb::ClangExpressionVariableSP
     GetVariableAtIndex(size_t index)
     {
         lldb::ClangExpressionVariableSP var_sp;
@@ -241,11 +253,23 @@ public:
         return var_sp;
     }
     
-    virtual size_t
+    size_t
     AddVariable (const lldb::ClangExpressionVariableSP &var_sp)
     {
         m_variables.push_back(var_sp);
         return m_variables.size() - 1;
+    }
+
+    bool
+    ContainsVariable (const lldb::ClangExpressionVariableSP &var_sp)
+    {
+        const size_t size = m_variables.size();
+        for (size_t index = 0; index < size; ++index)
+        {
+            if (m_variables[index].get() == var_sp.get())
+                return true;
+        }
+        return false;
     }
 
     //----------------------------------------------------------------------

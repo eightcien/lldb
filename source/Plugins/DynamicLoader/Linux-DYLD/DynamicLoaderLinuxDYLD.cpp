@@ -7,13 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <iostream>
-#include <link.h>
-
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/Log.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
+
+#include "AuxVector.h"
 #include "DynamicLoaderLinuxDYLD.h"
 
 using namespace lldb;
@@ -76,7 +75,10 @@ DynamicLoaderLinuxDYLD::CreateInstance(Process *process)
 
 DynamicLoaderLinuxDYLD::DynamicLoaderLinuxDYLD(Process *process)
     : DynamicLoader(process),
-      m_rendezvous(process)
+      m_rendezvous(process),
+      m_load_offset(LLDB_INVALID_ADDRESS),
+      m_entry_point(LLDB_INVALID_ADDRESS),
+      m_auxv(NULL)
 {
 }
 
@@ -87,22 +89,38 @@ DynamicLoaderLinuxDYLD::~DynamicLoaderLinuxDYLD()
 void
 DynamicLoaderLinuxDYLD::DidAttach()
 {
-    Module *executable = m_process->GetTarget().GetExecutableModule().get();
-    if (executable != NULL)
-        UpdateLoadedSections(executable);
+    Module *executable;
+    addr_t load_offset;
 
-    ResolveImageInfo();
+    m_auxv.reset(new AuxVector(m_process));
+
+    executable = m_process->GetTarget().GetExecutableModule().get();
+    load_offset = ComputeLoadOffset();
+
+    if (executable != NULL && load_offset != LLDB_INVALID_ADDRESS)
+    {
+        UpdateLoadedSections(executable, load_offset);
+        ResolveImageInfo();
+    }
 }
 
 void
 DynamicLoaderLinuxDYLD::DidLaunch()
 {
-    Module *executable = m_process->GetTarget().GetExecutableModule().get();
-    if (executable != NULL)
-        UpdateLoadedSections(executable);
+    Module *executable;
+    addr_t load_offset;
 
-    ProbeEntry(executable);
-    ResolveImageInfo();
+    m_auxv.reset(new AuxVector(m_process));
+
+    executable = m_process->GetTarget().GetExecutableModule().get();
+    load_offset = ComputeLoadOffset();
+
+    if (executable != NULL && load_offset != LLDB_INVALID_ADDRESS)
+    {
+        UpdateLoadedSections(executable, m_load_offset);
+        ProbeEntry(executable);
+        ResolveImageInfo();
+    }
 }
 
 Error
@@ -129,15 +147,18 @@ DynamicLoaderLinuxDYLD::UpdateLoadedSections(Module *module, addr_t base_addr)
     ObjectFile *obj_file = module->GetObjectFile();
     SectionList *sections = obj_file->GetSectionList();
     SectionLoadList &load_list = m_process->GetTarget().GetSectionLoadList();
+    const size_t num_sections = sections->GetSize();
 
-    // FIXME: SectionList provides iterator types, but no begin/end methods.
-    size_t num_sections = sections->GetSize();
     for (unsigned i = 0; i < num_sections; ++i)
     {
         Section *section = sections->GetSectionAtIndex(i).get();
-
         lldb::addr_t new_load_addr = section->GetFileAddress() + base_addr;
         lldb::addr_t old_load_addr = load_list.GetSectionLoadAddress(section);
+
+        // If the file address of the section is zero then this is not an
+        // allocatable/loadable section (property of ELF sh_addr).  Skip it.
+        if (new_load_addr == base_addr)
+            continue;
 
         if (old_load_addr == LLDB_INVALID_ADDRESS ||
             old_load_addr != new_load_addr)
@@ -164,14 +185,13 @@ DynamicLoaderLinuxDYLD::ResolveImageInfo()
 void
 DynamicLoaderLinuxDYLD::ProbeEntry(Module *module)
 {
-    ObjectFile *obj_file = module->GetObjectFile();
-    addr_t entry_addr = obj_file->GetEntryPoint();
     Breakpoint *entry_break;
+    addr_t entry;
 
-    if (entry_addr == LLDB_INVALID_ADDRESS)
+    if ((entry = GetEntryPoint()) == LLDB_INVALID_ADDRESS)
         return;
     
-    entry_break = m_process->GetTarget().CreateBreakpoint(entry_addr, true).get();
+    entry_break = m_process->GetTarget().CreateBreakpoint(entry, true).get();
     entry_break->SetCallback(EntryBreakpointHit, this, true);
 }
 
@@ -226,9 +246,13 @@ DynamicLoaderLinuxDYLD::UpdateImageInfo()
 ThreadPlanSP
 DynamicLoaderLinuxDYLD::GetStepThroughTrampolinePlan(Thread &thread, bool stop_others)
 {
+    LogSP log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_DYNAMIC_LOADER));
     ThreadPlanSP thread_plan_sp;
 
-    std::cerr << "DynamicLoaderLinux: GetStepThroughTrampolinePlan not implemented\n";
+    if (log)
+        log->PutCString("DynamicLoaderLinuxDYLD: "
+                        "GetStepThroughTrampolinePlan not implemented\n");
+
     return thread_plan_sp;
 }
 
@@ -273,4 +297,44 @@ DynamicLoaderLinuxDYLD::LoadModuleAtAddress(const FileSpec &file, addr_t base_ad
     }
 
     return module_sp;
+}
+
+addr_t
+DynamicLoaderLinuxDYLD::ComputeLoadOffset()
+{
+    addr_t virt_entry;
+
+    if (m_load_offset != LLDB_INVALID_ADDRESS)
+        return m_load_offset;
+
+    if ((virt_entry = GetEntryPoint()) == LLDB_INVALID_ADDRESS)
+        return LLDB_INVALID_ADDRESS;
+
+    ModuleSP module = m_process->GetTarget().GetExecutableModule();
+    ObjectFile *exe = module->GetObjectFile();
+    Address file_entry = exe->GetEntryPoint();
+
+    if (!file_entry.IsValid())
+        return LLDB_INVALID_ADDRESS;
+            
+    m_load_offset = virt_entry - file_entry.GetFileAddress();
+    return m_load_offset;
+}
+
+addr_t
+DynamicLoaderLinuxDYLD::GetEntryPoint()
+{
+    if (m_entry_point != LLDB_INVALID_ADDRESS)
+        return m_entry_point;
+
+    if (m_auxv.get() == NULL)
+        return LLDB_INVALID_ADDRESS;
+
+    AuxVector::iterator I = m_auxv->FindEntry(AuxVector::AT_ENTRY);
+
+    if (I == m_auxv->end())
+        return LLDB_INVALID_ADDRESS;
+
+    m_entry_point = static_cast<addr_t>(I->value);
+    return m_entry_point;
 }

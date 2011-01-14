@@ -12,13 +12,13 @@
 
 // C Includes
 // C++ Includes
-#include <map>
-#include <vector>
 #include <string>
 
 #include "lldb/Breakpoint/StoppointCallbackContext.h"
 #include "lldb/Target/DynamicLoader.h"
 #include "DYLDRendezvous.h"
+
+class AuxVector;
 
 class DynamicLoaderLinuxDYLD : public lldb_private::DynamicLoader
 {
@@ -121,6 +121,25 @@ protected:
 
     lldb::ModuleSP
     LoadModuleAtAddress(const lldb_private::FileSpec &file, lldb::addr_t base_addr);
+
+    /// Virtual load address of the inferior module.
+    lldb::addr_t m_load_offset;
+
+    /// Virtual entry address of the inferior process.
+    lldb::addr_t m_entry_point;
+
+    /// Auxiliary vector od the inferior process.
+    std::auto_ptr<AuxVector> m_auxv;
+    
+    /// Computes a value for m_load_offset returning the computed address on
+    /// sucess and LLDB_INVALID_ADDRESS on failure.
+    lldb::addr_t
+    ComputeLoadOffset();
+
+    /// Computes a value for m_entry_point returning the computed address on
+    /// sucess and LLDB_INVALID_ADDRESS on failure.
+    lldb::addr_t
+    GetEntryPoint();
 
 private:
     DISALLOW_COPY_AND_ASSIGN(DynamicLoaderLinuxDYLD);

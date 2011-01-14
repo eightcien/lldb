@@ -7,6 +7,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+// C Includes
+// C++ Includes
+#include <iostream>
+
+// Other libraries and framework includes
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/Log.h"
 #include "lldb/Target/Process.h"
@@ -89,37 +94,41 @@ DynamicLoaderLinuxDYLD::~DynamicLoaderLinuxDYLD()
 void
 DynamicLoaderLinuxDYLD::DidAttach()
 {
-    Module *executable;
+    ModuleSP executable;
     addr_t load_offset;
 
     m_auxv.reset(new AuxVector(m_process));
 
-    executable = m_process->GetTarget().GetExecutableModule().get();
+    executable = m_process->GetTarget().GetExecutableModule();
     load_offset = ComputeLoadOffset();
 
-    if (executable != NULL && load_offset != LLDB_INVALID_ADDRESS)
+    if (!executable.empty() && load_offset != LLDB_INVALID_ADDRESS)
     {
+        ModuleList module_list;
+        module_list.Append(executable);
         UpdateLoadedSections(executable, load_offset);
-        ResolveImageInfo();
+        m_process->GetTarget().ModulesDidLoad(module_list);
     }
 }
 
 void
 DynamicLoaderLinuxDYLD::DidLaunch()
 {
-    Module *executable;
+    ModuleSP executable;
     addr_t load_offset;
 
     m_auxv.reset(new AuxVector(m_process));
 
-    executable = m_process->GetTarget().GetExecutableModule().get();
+    executable = m_process->GetTarget().GetExecutableModule();
     load_offset = ComputeLoadOffset();
 
-    if (executable != NULL && load_offset != LLDB_INVALID_ADDRESS)
+    if (!executable.empty() && load_offset != LLDB_INVALID_ADDRESS)
     {
-        UpdateLoadedSections(executable, m_load_offset);
-        ProbeEntry(executable);
-        ResolveImageInfo();
+        ModuleList module_list;
+        module_list.Append(executable);
+        UpdateLoadedSections(executable, load_offset);
+        ProbeEntry();
+        m_process->GetTarget().ModulesDidLoad(module_list);
     }
 }
 
@@ -142,7 +151,7 @@ DynamicLoaderLinuxDYLD::CanLoadImage()
 }
 
 void
-DynamicLoaderLinuxDYLD::UpdateLoadedSections(Module *module, addr_t base_addr)
+DynamicLoaderLinuxDYLD::UpdateLoadedSections(ModuleSP module, addr_t base_addr)
 {
     ObjectFile *obj_file = module->GetObjectFile();
     SectionList *sections = obj_file->GetSectionList();
@@ -166,24 +175,8 @@ DynamicLoaderLinuxDYLD::UpdateLoadedSections(Module *module, addr_t base_addr)
     }
 }
 
-bool
-DynamicLoaderLinuxDYLD::ResolveImageInfo()
-{
-    LogSP log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_DYNAMIC_LOADER));
-
-    if (!m_rendezvous.Resolve())
-        return false;
-
-    UpdateLinkMap();
-
-    if (log)
-        m_rendezvous.DumpToLog(log);
-
-    return true;
-}
-
 void
-DynamicLoaderLinuxDYLD::ProbeEntry(Module *module)
+DynamicLoaderLinuxDYLD::ProbeEntry()
 {
     Breakpoint *entry_break;
     addr_t entry;
@@ -204,43 +197,77 @@ DynamicLoaderLinuxDYLD::EntryBreakpointHit(void *baton,
     DynamicLoaderLinuxDYLD* dyld_instance;
 
     dyld_instance = static_cast<DynamicLoaderLinuxDYLD*>(baton);
-    dyld_instance->ResolveImageInfo();
-    return false; /* Continue running. */
+    dyld_instance->LoadAllCurrentModules();
+    dyld_instance->SetRendezvousBreakpoint();
+    return false; // Continue running.
 }
 
-user_id_t
-DynamicLoaderLinuxDYLD::SetNotificationBreakpoint()
+void
+DynamicLoaderLinuxDYLD::SetRendezvousBreakpoint()
 {
     Breakpoint *dyld_break;
     addr_t break_addr;
 
-    if (!ResolveImageInfo())
-        return false;
-
     break_addr = m_rendezvous.GetBreakAddress();
     dyld_break = m_process->GetTarget().CreateBreakpoint(break_addr, true).get();
-    dyld_break->SetCallback(NotifyBreakpointHit, this, true);
-    return dyld_break->GetID();
+    dyld_break->SetCallback(RendezvousBreakpointHit, this, true);
 }
 
 bool
-DynamicLoaderLinuxDYLD::NotifyBreakpointHit(void *baton, 
-                                            StoppointCallbackContext *context, 
-                                            user_id_t break_id, 
-                                            user_id_t break_loc_id)
+DynamicLoaderLinuxDYLD::RendezvousBreakpointHit(void *baton, 
+                                                StoppointCallbackContext *context, 
+                                                user_id_t break_id, 
+                                                user_id_t break_loc_id)
 {
     DynamicLoaderLinuxDYLD* dyld_instance;
 
     dyld_instance = static_cast<DynamicLoaderLinuxDYLD*>(baton);
-    dyld_instance->UpdateImageInfo();
+    dyld_instance->RefreshModules();
 
     // Return true to stop the target, false to just let the target run.
     return dyld_instance->GetStopWhenImagesChange();
 }
 
 void
-DynamicLoaderLinuxDYLD::UpdateImageInfo()
+DynamicLoaderLinuxDYLD::RefreshModules()
 {
+    if (!m_rendezvous.Resolve())
+        return;
+
+    DYLDRendezvous::iterator I;
+    DYLDRendezvous::iterator E;
+
+    ModuleList &loaded_modules = m_process->GetTarget().GetImages();
+
+    if (m_rendezvous.ModulesDidLoad()) 
+    {
+        ModuleList new_modules;
+
+        E = m_rendezvous.loaded_end();
+        for (I = m_rendezvous.loaded_begin(); I != E; ++I)
+        {
+            FileSpec file(I->path.c_str(), true);
+            ModuleSP module_sp = LoadModuleAtAddress(file, I->base_addr);
+            if (!module_sp.empty())
+                new_modules.Append(module_sp);
+        }
+        m_process->GetTarget().ModulesDidLoad(new_modules);
+    }
+    
+    if (m_rendezvous.ModulesDidUnload())
+    {
+        ModuleList old_modules;
+
+        E = m_rendezvous.unloaded_end();
+        for (I = m_rendezvous.unloaded_begin(); I != E; ++I)
+        {
+            FileSpec file(I->path.c_str(), true);
+            ModuleSP module_sp = loaded_modules.FindFirstModuleForFileSpec(file);
+            if (!module_sp.empty())
+                old_modules.Append(module_sp);
+        }
+        m_process->GetTarget().ModulesDidUnload(old_modules);
+    }
 }
 
 ThreadPlanSP
@@ -257,23 +284,21 @@ DynamicLoaderLinuxDYLD::GetStepThroughTrampolinePlan(Thread &thread, bool stop_o
 }
 
 void
-DynamicLoaderLinuxDYLD::UpdateLinkMap()
+DynamicLoaderLinuxDYLD::LoadAllCurrentModules()
 {
     DYLDRendezvous::iterator I;
     DYLDRendezvous::iterator E;
     ModuleList module_list;
-    LogSP log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_DYNAMIC_LOADER));
     
+    if (!m_rendezvous.Resolve())
+        return;
+
     for (I = m_rendezvous.begin(), E = m_rendezvous.end(); I != E; ++I)
     {
         FileSpec file(I->path.c_str(), false);
         ModuleSP module_sp = LoadModuleAtAddress(file, I->base_addr);
-        
-        if (!module_sp.empty()) {
+        if (!module_sp.empty())
             module_list.Append(module_sp);
-            if (log) 
-                log->Printf("DYLD Loaded: \n", I->path.c_str());
-        }
     }
 
     m_process->GetTarget().ModulesDidLoad(module_list);
@@ -288,11 +313,11 @@ DynamicLoaderLinuxDYLD::LoadModuleAtAddress(const FileSpec &file, addr_t base_ad
 
     if ((module_sp = modules.FindFirstModuleForFileSpec(file))) 
     {
-        UpdateLoadedSections(module_sp.get(), base_addr);
+        UpdateLoadedSections(module_sp, base_addr);
     }
     else if ((module_sp = target.GetSharedModule(file, target.GetArchitecture()))) 
     {
-        UpdateLoadedSections(module_sp.get(), base_addr);
+        UpdateLoadedSections(module_sp, base_addr);
         modules.Append(module_sp);
     }
 

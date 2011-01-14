@@ -7,10 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+// C Includes
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
+// C++ Includes
+// Other libraries and framework includes
 #include "lldb/Core/DataBufferHeap.h"
 #include "lldb/Core/DataExtractor.h"
 #include "lldb/Core/Log.h"

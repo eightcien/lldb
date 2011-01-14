@@ -12,10 +12,10 @@
 
 // C Includes
 // C++ Includes
-#include <string>
-
+// Other libraries and framework includes
 #include "lldb/Breakpoint/StoppointCallbackContext.h"
 #include "lldb/Target/DynamicLoader.h"
+
 #include "DYLDRendezvous.h"
 
 class AuxVector;
@@ -83,61 +83,78 @@ public:
     EnablePluginLogging(lldb_private::Stream *strm, lldb_private::Args &command);
 
 protected:
-
+    /// Runtime linker rendezvous structure.
     DYLDRendezvous m_rendezvous;
 
-    bool
-    ResolveImageInfo();
+    /// Virtual load address of the inferior process.
+    lldb::addr_t m_load_offset;
 
-    /// @returns ID of the dynamic loader rendezvous breakpoint on success else
-    /// LLDB_INVALID_BREAK_ID on error.
-    lldb::user_id_t
-    SetNotificationBreakpoint();
+    /// Virtual entry address of the inferior process.
+    lldb::addr_t m_entry_point;
 
+    /// Auxiliary vector of the inferior process.
+    std::auto_ptr<AuxVector> m_auxv;
+
+    /// Enables a breakpoint on a function called by the runtime
+    /// linker each time a module is loaded or unloaded.
+    void
+    SetRendezvousBreakpoint();
+
+    /// Callback routine which updates the current list of loaded modules based
+    /// on the information supplied by the runtime linker.
     static bool
-    NotifyBreakpointHit(void *baton, 
-                        lldb_private::StoppointCallbackContext *context, 
-                        lldb::user_id_t break_id, 
-                        lldb::user_id_t break_loc_id);
-
+    RendezvousBreakpointHit(void *baton, 
+                            lldb_private::StoppointCallbackContext *context, 
+                            lldb::user_id_t break_id, 
+                            lldb::user_id_t break_loc_id);
+    
+    /// Helper method for RendezvousBreakpointHit.  Updates LLDB's current set
+    /// of loaded modules.
     void
-    UpdateImageInfo();
+    RefreshModules();
 
+    /// Updates the load address of every allocatable section in @p module.
+    ///
+    /// @param module The module to traverse.
+    ///
+    /// @param base_addr The virtual base address @p module is loaded at.
     void
-    UpdateLoadedSections(lldb_private::Module *module, 
+    UpdateLoadedSections(lldb::ModuleSP module, 
                          lldb::addr_t base_addr = 0);
 
-    void
-    ProbeEntry(lldb_private::Module *module);
+    /// Locates or creates a module given by @p file and updates/loads the
+    /// resulting module at the virtual base address @p base_addr.
+    lldb::ModuleSP
+    LoadModuleAtAddress(const lldb_private::FileSpec &file, lldb::addr_t base_addr);
 
+    /// Resolves the entry point for the current inferior process and sets a
+    /// breakpoint at that address.
+    void
+    ProbeEntry();
+
+    /// Callback routine invoked when we hit the breakpoint on process entry.
+    ///
+    /// This routine is responsible for resolving the load addresses of all
+    /// dependent modules required by the inferior and setting up the rendezvous
+    /// breakpoint.
     static bool
     EntryBreakpointHit(void *baton, 
                        lldb_private::StoppointCallbackContext *context, 
                        lldb::user_id_t break_id, 
                        lldb::user_id_t break_loc_id);
 
+    /// Helper for the entry breakpoint callback.  Resolves the load addresses
+    /// of all dependent modules.
     void
-    UpdateLinkMap();
+    LoadAllCurrentModules();
 
-    lldb::ModuleSP
-    LoadModuleAtAddress(const lldb_private::FileSpec &file, lldb::addr_t base_addr);
-
-    /// Virtual load address of the inferior module.
-    lldb::addr_t m_load_offset;
-
-    /// Virtual entry address of the inferior process.
-    lldb::addr_t m_entry_point;
-
-    /// Auxiliary vector od the inferior process.
-    std::auto_ptr<AuxVector> m_auxv;
-    
     /// Computes a value for m_load_offset returning the computed address on
-    /// sucess and LLDB_INVALID_ADDRESS on failure.
+    /// success and LLDB_INVALID_ADDRESS on failure.
     lldb::addr_t
     ComputeLoadOffset();
 
     /// Computes a value for m_entry_point returning the computed address on
-    /// sucess and LLDB_INVALID_ADDRESS on failure.
+    /// success and LLDB_INVALID_ADDRESS on failure.
     lldb::addr_t
     GetEntryPoint();
 

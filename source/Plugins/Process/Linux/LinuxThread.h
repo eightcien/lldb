@@ -37,6 +37,9 @@ public:
     bool
     WillResume(lldb::StateType resume_state);
 
+    void
+    DidResume();
+
     const char *
     GetInfo();
 

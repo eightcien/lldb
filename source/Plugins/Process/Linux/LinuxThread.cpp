@@ -128,6 +128,13 @@ LinuxThread::WillResume(lldb::StateType resume_state)
     return Thread::WillResume(resume_state);
 }
 
+void
+LinuxThread::DidResume()
+{
+    ClearStackFrames();
+    Thread::DidResume();
+}
+
 bool
 LinuxThread::Resume()
 {

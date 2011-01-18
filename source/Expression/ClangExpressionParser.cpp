@@ -21,6 +21,7 @@
 #include "lldb/Expression/IRToDWARF.h"
 #include "lldb/Expression/RecordingMemoryManager.h"
 #include "lldb/Target/ExecutionContext.h"
+#include "lldb/Target/ObjCLanguageRuntime.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
 
@@ -180,6 +181,7 @@ CreateFrontendAction(CompilerInstance &CI) {
 //===----------------------------------------------------------------------===//
 
 ClangExpressionParser::ClangExpressionParser(const char *target_triple,
+                                             Process *process,
                                              ClangExpression &expr) :
     m_expr(expr),
     m_target_triple (),
@@ -210,7 +212,23 @@ ClangExpressionParser::ClangExpressionParser(const char *target_triple,
     // Parse expressions as Objective C++ regardless of context.
     // Our hook into Clang's lookup mechanism only works in C++.
     m_compiler->getLangOpts().CPlusPlus = true;
+    
+    // Setup objective C
     m_compiler->getLangOpts().ObjC1 = true;
+    m_compiler->getLangOpts().ObjC2 = true;
+    
+    if (process)
+    {
+        if (process->GetObjCLanguageRuntime())
+        {
+            if (process->GetObjCLanguageRuntime()->GetRuntimeVersion() == lldb::eAppleObjC_V2)
+            {
+                m_compiler->getLangOpts().ObjCNonFragileABI = true;     // NOT i386
+                m_compiler->getLangOpts().ObjCNonFragileABI2 = true;    // NOT i386
+            }
+        }
+    }
+
     m_compiler->getLangOpts().ThreadsafeStatics = false;
     m_compiler->getLangOpts().AccessControl = false; // Debuggers get universal access
     m_compiler->getLangOpts().DollarIdents = true; // $ indicates a persistent variable name

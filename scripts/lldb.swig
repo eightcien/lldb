@@ -1,8 +1,6 @@
 /*
    lldb.swig
 
-   Created by Caroline Tice 1/18/2010
-
    This is the input file for SWIG, to create the appropriate C++ wrappers and
    functions for various scripting languages, to enable them to call the
    liblldb Script Bridge functions.
@@ -20,11 +18,11 @@
   if (PyList_Check($input)) {
     int size = PyList_Size($input);
     int i = 0;
-    $1 = (char **) malloc((size+1) * sizeof(char));
+    $1 = (char **) malloc((size+1) * sizeof(char*));
     for (i = 0; i < size; i++) {
       PyObject *o = PyList_GetItem($input,i);
       if (PyString_Check(o))
-        $1[i] = PyString_AsString(PyList_GetItem($input,i));
+        $1[i] = PyString_AsString(o);
       else {
         PyErr_SetString(PyExc_TypeError,"list must contain strings");
         free($1);
@@ -55,6 +53,43 @@
   }
 }
 
+
+
+// typemap for an outgoing buffer
+%typemap(in) (const void *wbuffer, size_t len) {
+   if (!PyString_Check($input)) {
+       PyErr_SetString(PyExc_ValueError, "Expecting a string");
+       return NULL;
+   }
+   $1 = (void *) PyString_AsString($input);
+   $2 = PyString_Size($input);
+}
+
+// typemap for an incoming buffer
+%typemap(in) (void *rbuffer, size_t len) {
+   if (!PyInt_Check($input)) {
+       PyErr_SetString(PyExc_ValueError, "Expecting an integer");
+       return NULL;
+   }
+   $2 = PyInt_AsLong($input);
+   if ($2 < 0) {
+       PyErr_SetString(PyExc_ValueError, "Positive integer expected");
+       return NULL;
+   }
+   $1 = (void *) malloc($2);
+}
+
+// Return the buffer.  Discarding any previous return result
+%typemap(argout) (void *rbuffer, size_t len) {
+   Py_XDECREF($result);   /* Blow away any previous result */
+   if (result < 0) {      /* Check for I/O error */
+       free($1);
+       PyErr_SetFromErrno(PyExc_IOError);
+       return NULL;
+   }
+   $result = PyString_FromStringAndSize($1,result);
+   free($1);
+}
 
 /* The liblldb header files to be included. */
 
@@ -151,6 +186,7 @@ SWIGEXPORT bool
 LLDBSWIGPythonBreakpointCallbackFunction 
 (
     const char *python_function_name,
+    const char *session_dictionary_name,
     lldb::SBFrame& sb_frame, 
     lldb::SBBreakpointLocation& sb_bp_loc
 )
@@ -161,20 +197,70 @@ LLDBSWIGPythonBreakpointCallbackFunction
     
     if (Frame_PyObj == NULL || Bp_Loc_PyObj == NULL)
         return stop_at_breakpoint;
+        
+    if (!python_function_name || !session_dictionary_name)
+        return stop_at_breakpoint;
 
-    PyObject *pmodule, *pdict, *pfunc;
+    PyObject *pmodule, *main_dict, *session_dict, *pfunc;
     PyObject *pargs, *pvalue;
     
     pmodule = PyImport_AddModule ("__main__");
     if (pmodule != NULL)
     {
-        pdict = PyModule_GetDict (pmodule);
-        if (pdict != NULL)
+        main_dict = PyModule_GetDict (pmodule);
+        if (main_dict != NULL)
         {
-            pfunc = PyObject_GetAttrString (pmodule, python_function_name);
+            PyObject *key, *value;
+            Py_ssize_t pos = 0;
+             
+            // Find the current session's dictionary in the main module's dictionary.
+
+            if (PyDict_Check (main_dict))
+             
+            {
+                session_dict = NULL;   
+                while (PyDict_Next (main_dict, &pos, &key, &value))
+                {
+                    // We have stolen references to the key and value objects in the dictionary; we need to increment 
+                    // them now so that Python's garbage collector doesn't collect them out from under us.
+                    Py_INCREF (key);
+                    Py_INCREF (value);
+                    if (strcmp (PyString_AsString (key), session_dictionary_name) == 0)
+                    {
+                        session_dict = value;
+                        break;
+                    }
+                }
+            }
+            
+            if (!session_dict || !PyDict_Check (session_dict))
+                return stop_at_breakpoint;
+                
+            // Find the function we need to call in the current session's dictionary.
+
+            pos = 0;
+            pfunc = NULL;
+            while (PyDict_Next (session_dict, &pos, &key, &value))
+            {
+                if (PyString_Check (key))
+                {
+                    // We have stolen references to the key and value objects in the dictionary; we need to increment 
+                    // them now so that Python's garbage collector doesn't collect them out from under us.
+                    Py_INCREF (key);
+                    Py_INCREF (value);
+                    if (strcmp (PyString_AsString (key), python_function_name) == 0)
+                    {
+                        pfunc = value;
+                        break;
+                    }
+                }
+            }
+
+            // Set up the arguments and call the function.
+                
             if (pfunc && PyCallable_Check (pfunc))
             {
-                pargs = PyTuple_New (2);
+                pargs = PyTuple_New (3);
                 if (pargs == NULL)
                 {
                     if (PyErr_Occurred())
@@ -184,6 +270,7 @@ LLDBSWIGPythonBreakpointCallbackFunction
                 
                 PyTuple_SetItem (pargs, 0, Frame_PyObj);  // This "steals" a reference to Frame_PyObj
                 PyTuple_SetItem (pargs, 1, Bp_Loc_PyObj); // This "steals" a reference to Bp_Loc_PyObj
+                PyTuple_SetItem (pargs, 2, session_dict); // This "steals" a reference to session_dict
                 pvalue = PyObject_CallObject (pfunc, pargs);
                 Py_DECREF (pargs);
                 
@@ -195,7 +282,7 @@ LLDBSWIGPythonBreakpointCallbackFunction
                 {
                     PyErr_Clear();
                 }
-                Py_DECREF (pfunc);
+                Py_INCREF (session_dict);
             }
             else if (PyErr_Occurred())
             {

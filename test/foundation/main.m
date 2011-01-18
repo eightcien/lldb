@@ -98,9 +98,11 @@ Test_MyString (const char *program)
 int
 Test_NSArray ()
 {
+    NSMutableArray *nil_mutable_array = nil;
     NSArray *array1 = [NSArray arrayWithObjects: @"array1 object1", @"array1 object2", @"array1 object3", nil];
     NSArray *array2 = [NSArray arrayWithObjects: array1, @"array2 object2", @"array2 object3", nil];
     // Expressions to test here for NSArray:
+    // expression [nil_mutable_array count]
     // expression [array1 count]
     // expression array1.count
     // expression [array2 count]
@@ -114,7 +116,7 @@ Test_NSArray ()
     obj = [array2 objectAtIndex: 0];
     obj = [array2 objectAtIndex: 1];
     obj = [array2 objectAtIndex: 2];
-
+    NSUInteger count = [nil_mutable_array count];
     return 0;
 }
 

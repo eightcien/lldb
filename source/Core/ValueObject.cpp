@@ -451,29 +451,24 @@ ValueObject::GetSummaryAsCString (ExecutionContextScope *exe_scope)
                             DataExtractor data;
                             size_t bytes_read = 0;
                             std::vector<char> data_buffer;
-                            std::vector<char> cstr_buffer;
-                            size_t cstr_length;
                             Error error;
                             if (cstr_len > 0)
                             {
                                 data_buffer.resize(cstr_len);
-                                // Resize the formatted buffer in case every character
-                                // uses the "\xXX" format and one extra byte for a NULL
-                                cstr_buffer.resize(data_buffer.size() * 4 + 1);
                                 data.SetData (&data_buffer.front(), data_buffer.size(), eByteOrderHost);
                                 bytes_read = process->ReadMemory (cstr_address, &data_buffer.front(), cstr_len, error);
                                 if (bytes_read > 0)
                                 {
                                     sstr << '"';
-                                    cstr_length = data.Dump (&sstr,
-                                                             0,                 // Start offset in "data"
-                                                             eFormatChar,       // Print as characters
-                                                             1,                 // Size of item (1 byte for a char!)
-                                                             bytes_read,        // How many bytes to print?
-                                                             UINT32_MAX,        // num per line
-                                                             LLDB_INVALID_ADDRESS,// base address
-                                                             0,                 // bitfield bit size
-                                                             0);                // bitfield bit offset
+                                    data.Dump (&sstr,
+                                               0,                 // Start offset in "data"
+                                               eFormatChar,       // Print as characters
+                                               1,                 // Size of item (1 byte for a char!)
+                                               bytes_read,        // How many bytes to print?
+                                               UINT32_MAX,        // num per line
+                                               LLDB_INVALID_ADDRESS,// base address
+                                               0,                 // bitfield bit size
+                                               0);                // bitfield bit offset
                                     sstr << '"';
                                 }
                             }
@@ -483,13 +478,10 @@ ValueObject::GetSummaryAsCString (ExecutionContextScope *exe_scope)
                                 data_buffer.resize (k_max_buf_size + 1);
                                 // NULL terminate in case we don't get the entire C string
                                 data_buffer.back() = '\0';
-                                // Make a formatted buffer that can contain take 4
-                                // bytes per character in case each byte uses the
-                                // "\xXX" format and one extra byte for a NULL
-                                cstr_buffer.resize (k_max_buf_size * 4 + 1);
+
+                                sstr << '"';
 
                                 data.SetData (&data_buffer.front(), data_buffer.size(), eByteOrderHost);
-                                size_t total_cstr_len = 0;
                                 while ((bytes_read = process->ReadMemory (cstr_address, &data_buffer.front(), k_max_buf_size, error)) > 0)
                                 {
                                     size_t len = strlen(&data_buffer.front());
@@ -497,25 +489,22 @@ ValueObject::GetSummaryAsCString (ExecutionContextScope *exe_scope)
                                         break;
                                     if (len > bytes_read)
                                         len = bytes_read;
-                                    if (sstr.GetSize() == 0)
-                                        sstr << '"';
 
-                                    cstr_length = data.Dump (&sstr,
-                                                             0,                 // Start offset in "data"
-                                                             eFormatChar,       // Print as characters
-                                                             1,                 // Size of item (1 byte for a char!)
-                                                             len,               // How many bytes to print?
-                                                             UINT32_MAX,        // num per line
-                                                             LLDB_INVALID_ADDRESS,// base address
-                                                             0,                 // bitfield bit size
-                                                             0);                // bitfield bit offset
-
+                                    data.Dump (&sstr,
+                                               0,                 // Start offset in "data"
+                                               eFormatChar,       // Print as characters
+                                               1,                 // Size of item (1 byte for a char!)
+                                               len,               // How many bytes to print?
+                                               UINT32_MAX,        // num per line
+                                               LLDB_INVALID_ADDRESS,// base address
+                                               0,                 // bitfield bit size
+                                               0);                // bitfield bit offset
+                                    
                                     if (len < k_max_buf_size)
                                         break;
-                                    cstr_address += total_cstr_len;
+                                    cstr_address += k_max_buf_size;
                                 }
-                                if (sstr.GetSize() > 0)
-                                    sstr << '"';
+                                sstr << '"';
                             }
                         }
                     }
@@ -944,11 +933,11 @@ ValueObject::SetDynamicValue ()
 
 
 void
-ValueObject::GetExpressionPath (Stream &s)
+ValueObject::GetExpressionPath (Stream &s, bool qualify_cxx_base_classes)
 {
     if (m_parent)
     {
-        m_parent->GetExpressionPath (s);
+        m_parent->GetExpressionPath (s, qualify_cxx_base_classes);
         clang_type_t parent_clang_type = m_parent->GetClangType();
         if (parent_clang_type)
         {
@@ -967,11 +956,14 @@ ValueObject::GetExpressionPath (Stream &s)
     
     if (IsBaseClass())
     {
-        clang_type_t clang_type = GetClangType();
-        std::string cxx_class_name;
-        if (ClangASTContext::GetCXXClassName (clang_type, cxx_class_name))
+        if (qualify_cxx_base_classes)
         {
-            s << cxx_class_name.c_str() << "::";
+            clang_type_t clang_type = GetClangType();
+            std::string cxx_class_name;
+            if (ClangASTContext::GetCXXClassName (clang_type, cxx_class_name))
+            {
+                s << cxx_class_name.c_str() << "::";
+            }
         }
     }
     else
@@ -1026,7 +1018,9 @@ ValueObject::DumpValueObject
 
             if (flat_output)
             {
-                valobj->GetExpressionPath(s);
+                // If we are showing types, also qualify the C++ base classes 
+                const bool qualify_cxx_base_classes = show_types;
+                valobj->GetExpressionPath(s, qualify_cxx_base_classes);
                 s.PutCString(" =");
             }
             else
@@ -1270,7 +1264,7 @@ ValueObject::Dereference (Error &error)
     else
     {
         StreamString strm;
-        GetExpressionPath(strm);
+        GetExpressionPath(strm, true);
 
         if (is_pointer_type)
             error.SetErrorStringWithFormat("dereference failed: (%s) %s", GetTypeName().AsCString("<invalid type>"), strm.GetString().c_str());
@@ -1297,7 +1291,7 @@ ValueObject::AddressOf (Error &error)
         case eAddressTypeInvalid:
             {
                 StreamString expr_path_strm;
-                GetExpressionPath(expr_path_strm);
+                GetExpressionPath(expr_path_strm, true);
                 error.SetErrorStringWithFormat("'%s' is not in memory", expr_path_strm.GetString().c_str());
             }
             break;

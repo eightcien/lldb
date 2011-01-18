@@ -177,10 +177,22 @@ ClangASTType::GetEncoding (clang_type_t clang_type, uint32_t &count)
     case clang::Type::LValueReference:
     case clang::Type::RValueReference:
     case clang::Type::MemberPointer:            return lldb::eEncodingUint;
-    // Complex numbers are made up of floats
     case clang::Type::Complex:
-        count = 2;
-        return lldb::eEncodingIEEE754;
+        {
+            lldb::Encoding encoding = lldb::eEncodingIEEE754;
+            if (qual_type->isComplexType())
+                encoding = lldb::eEncodingIEEE754;
+            else
+            {
+                const clang::ComplexType *complex_type = qual_type->getAsComplexIntegerType();
+                if (complex_type)
+                    encoding = GetEncoding (complex_type->getElementType().getAsOpaquePtr(), count);
+                else 
+                    encoding = lldb::eEncodingSint;
+            }
+            count = 2;
+            return encoding;
+        }
 
     case clang::Type::ObjCInterface:            break;
     case clang::Type::Record:                   break;
@@ -270,7 +282,13 @@ ClangASTType::GetFormat (clang_type_t clang_type)
     case clang::Type::LValueReference:
     case clang::Type::RValueReference:          return lldb::eFormatHex;
     case clang::Type::MemberPointer:            break;
-    case clang::Type::Complex:                  return lldb::eFormatComplex;
+    case clang::Type::Complex:
+        {
+            if (qual_type->isComplexType())
+                return lldb::eFormatComplex;
+            else
+                return lldb::eFormatComplexInteger;
+        }
     case clang::Type::ObjCInterface:            break;
     case clang::Type::Record:                   break;
     case clang::Type::Enum:                     return lldb::eFormatEnum;
@@ -345,6 +363,7 @@ ClangASTType::DumpValue
     switch (qual_type->getTypeClass())
     {
     case clang::Type::Record:
+        if (ClangASTContext::GetCompleteType (ast_context, clang_type))
         {
             const clang::RecordType *record_type = cast<clang::RecordType>(qual_type.getTypePtr());
             const clang::RecordDecl *record_decl = record_type->getDecl();
@@ -473,6 +492,7 @@ ClangASTType::DumpValue
         return;
 
     case clang::Type::Enum:
+        if (ClangASTContext::GetCompleteType (ast_context, clang_type))
         {
             const clang::EnumType *enum_type = cast<clang::EnumType>(qual_type.getTypePtr());
             const clang::EnumDecl *enum_decl = enum_type->getDecl();
@@ -672,7 +692,7 @@ ClangASTType::DumpTypeValue
         case clang::Type::Enum:
             // If our format is enum or default, show the enumeration value as
             // its enumeration string value, else just display it as requested.
-            if (format == eFormatEnum || format == eFormatDefault)
+            if ((format == eFormatEnum || format == eFormatDefault) && ClangASTContext::GetCompleteType (ast_context, clang_type))
             {
                 const clang::EnumType *enum_type = cast<clang::EnumType>(qual_type.getTypePtr());
                 const clang::EnumDecl *enum_decl = enum_type->getDecl();

@@ -163,7 +163,7 @@ ObjectFileELF::IsExecutable() const
 }
 
 Address
-ObjectFileELF::GetEntryPoint()
+ObjectFileELF::GetEntryPoint() const
 {
     if (m_header.e_entry)
         return Address(NULL, m_header.e_entry);

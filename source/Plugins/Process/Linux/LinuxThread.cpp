@@ -26,6 +26,7 @@ using namespace lldb_private;
 LinuxThread::LinuxThread(Process &process, lldb::tid_t tid)
     : Thread(process, tid),
       m_frame_ap(0),
+      m_stop_info_id(0),
       m_note(eNone)
 {
 }
@@ -107,7 +108,9 @@ LinuxThread::CreateRegisterContextForFrame (lldb_private::StackFrame *frame)
 lldb::StopInfoSP
 LinuxThread::GetPrivateStopReason()
 {
-    if (!m_stop_info || !m_stop_info->IsValid())
+    const uint32_t process_stop_id = GetProcess().GetStopID();
+
+    if (m_stop_info_id != process_stop_id || !m_stop_info || !m_stop_info->IsValid())
         RefreshPrivateStopReason();
     return m_stop_info;
 }
@@ -191,6 +194,8 @@ LinuxThread::ExitNotify()
 void
 LinuxThread::RefreshPrivateStopReason()
 {
+    m_stop_info_id = GetProcess().GetStopID();
+
     switch (m_note) {
 
     default:

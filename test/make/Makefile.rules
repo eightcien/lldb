@@ -18,11 +18,21 @@ ifeq "$(ARCH)" ""
 endif
 
 #----------------------------------------------------------------------
+# CC defaults to gcc.
+# See also these functions:
+#   o cxx_compiler
+#   o cxx_linker
+#----------------------------------------------------------------------
+CC ?= gcc
+ifeq "$(CC)" "cc"
+	CC = gcc
+endif
+
+#----------------------------------------------------------------------
 # Change any build/tool options needed
 #----------------------------------------------------------------------
 DS := /usr/bin/dsymutil
 DSFLAGS =
-CC ?= gcc
 CFLAGS ?=-arch $(ARCH) -gdwarf-2 -O0
 CXXFLAGS +=$(CFLAGS)
 LD = $(CC)
@@ -31,8 +41,11 @@ OBJECTS =
 EXE = a.out
 DSYM = $(EXE).dSYM
 
-# Function that returns the counterpart C++ compiler.
-cxx_compiler = $(if $(findstring clang,$(1)), clang++, $(if $(findstring llvm-gcc,$(1)), llvm-g++, g++))
+# Function that returns the counterpart C++ compiler, given $(CC) as arg.
+cxx_compiler = $(if $(findstring clang,$(1)), $(subst clang,clang++,$(1)), $(if $(findstring llvm-gcc,$(1)), $(subst llvm-gcc,llvm-g++,$(1)), $(subst gcc,g++,$(1))))
+
+# Function that returns the C++ linker, given $(CC) as arg.
+cxx_linker = $(if $(findstring clang,$(1)), $(subst clang,g++,$(1)), $(if $(findstring llvm-gcc,$(1)), $(subst llvm-gcc,g++,$(1)), $(subst gcc,g++,$(1))))
 
 #----------------------------------------------------------------------
 # dylib settings
@@ -55,7 +68,7 @@ endif
 ifneq "$(strip $(CXX_SOURCES))" ""
 	OBJECTS +=$(strip $(CXX_SOURCES:.cpp=.o))
 	CXX = $(call cxx_compiler,$(CC))
-	LD = g++
+	LD = $(call cxx_linker,$(CC))
 endif
 
 #----------------------------------------------------------------------
@@ -72,7 +85,7 @@ endif
 ifneq "$(strip $(OBJCXX_SOURCES))" ""
 	OBJECTS +=$(strip $(OBJCXX_SOURCES:.mm=.o))
 	CXX = $(call cxx_compiler,$(CC))
-	LD = g++
+	LD = $(call cxx_linker,$(CC))
 	ifeq $(findstring lobjc,$(LDFLAGS)) ""
 		LDFLAGS +=-lobjc
 	endif
@@ -162,3 +175,14 @@ ifeq "$(DYLIB_NAME)" ""
 else
 	rm -rf "$(EXE)" "$(DSYM)" $(OBJECTS) $(PREREQS) $(DYLIB_OBJECTS) $(DYLIB_NAME) $(DYLIB_NAME).dSYM
 endif
+
+#----------------------------------------------------------------------
+# From http://blog.melski.net/tag/debugging-makefiles/
+# 
+# Usage: make print-CC print-CXX print-LD
+#----------------------------------------------------------------------
+print-%:
+	@echo '$*=$($*)'
+	@echo '  origin = $(origin $*)'
+	@echo '  flavor = $(flavor $*)'
+	@echo '   value = $(value  $*)'

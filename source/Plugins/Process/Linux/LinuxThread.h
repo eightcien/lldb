@@ -76,6 +76,10 @@ private:
     lldb::BreakpointSiteSP m_breakpoint;
     lldb::StopInfoSP m_stop_info;
 
+    // Cached process stop id.  Used to ensure we do not recalculate stop
+    // information/state needlessly.
+    uint32_t m_stop_info_id;
+
     enum Notification {
         eNone,
         eBreak,

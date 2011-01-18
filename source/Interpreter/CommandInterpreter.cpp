@@ -49,6 +49,8 @@
 
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
+#include "lldb/Interpreter/ScriptInterpreterNone.h"
+#include "lldb/Interpreter/ScriptInterpreterPython.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -62,7 +64,8 @@ CommandInterpreter::CommandInterpreter
     Broadcaster ("lldb.command-interpreter"),
     m_debugger (debugger),
     m_synchronous_execution (synchronous_execution),
-    m_skip_lldbinit_files (false)
+    m_skip_lldbinit_files (false),
+    m_script_interpreter_ap ()
 {
     const char *dbg_name = debugger.GetInstanceName().AsCString();
     std::string lang_name = ScriptInterpreter::LanguageToString (script_language);
@@ -181,6 +184,7 @@ CommandInterpreter::LoadCommandDictionary ()
             break_regex_cmd_ap->AddRegexCommand("^[\"']?([-+]\\[.*\\])[\"']?[[:space:]]*$", "breakpoint set --name '%1'") &&
             break_regex_cmd_ap->AddRegexCommand("^$", "breakpoint list") &&
             break_regex_cmd_ap->AddRegexCommand("^(-.*)$", "breakpoint set %1") &&
+            break_regex_cmd_ap->AddRegexCommand("^(.*[^[:space:]])`(.*[^[:space:]])[[:space:]]*$", "breakpoint set --name '%2' --shlib '%1'") &&
             break_regex_cmd_ap->AddRegexCommand("^(.*[^[:space:]])[[:space:]]*$", "breakpoint set --name '%1'"))
         {
             CommandObjectSP break_regex_cmd_sp(break_regex_cmd_ap.release());
@@ -1458,15 +1462,23 @@ CommandInterpreter::SourceInitFile (bool in_cwd, CommandReturnObject &result)
 ScriptInterpreter *
 CommandInterpreter::GetScriptInterpreter ()
 {
-    CommandObject::CommandMap::iterator pos;
+    if (m_script_interpreter_ap.get() != NULL)
+        return m_script_interpreter_ap.get();
     
-    pos = m_command_dict.find ("script");
-    if (pos != m_command_dict.end())
+    lldb::ScriptLanguage script_lang = GetDebugger().GetScriptLanguage();
+    switch (script_lang)
     {
-        CommandObject *script_cmd_obj = pos->second.get();
-        return ((CommandObjectScript *) script_cmd_obj)->GetInterpreter ();
-    }
-    return NULL;
+        case eScriptLanguageNone:
+            m_script_interpreter_ap.reset (new ScriptInterpreterNone (*this));
+            break;
+        case eScriptLanguagePython:
+            m_script_interpreter_ap.reset (new ScriptInterpreterPython (*this));
+            break;
+        default:
+            break;
+    };
+    
+    return m_script_interpreter_ap.get();
 }
 
 

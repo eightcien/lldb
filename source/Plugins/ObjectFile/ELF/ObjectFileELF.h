@@ -90,7 +90,7 @@ public:
     IsExecutable () const;
 
     virtual lldb_private::Address
-    GetEntryPoint();
+    GetEntryPoint() const;
 
     virtual size_t
     GetAddressByteSize() const;

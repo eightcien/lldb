@@ -14,6 +14,7 @@
 #include "lldb/Core/Timer.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Host/Mutex.h"
+#include "lldb/Interpreter/ScriptInterpreter.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
 
@@ -54,7 +55,7 @@ void
 lldb_private::Initialize ()
 {
     // Make sure we inialize only once
-    static Mutex g_inited_mutex(Mutex::eMutexTypeNormal);
+    static Mutex g_inited_mutex(Mutex::eMutexTypeRecursive);
     static bool g_inited = false;
 
     Mutex::Locker locker(g_inited_mutex);
@@ -76,6 +77,7 @@ lldb_private::Initialize ()
         UnwindAssemblyProfiler_x86::Initialize();
         ArchDefaultUnwindPlan_x86::Initialize();
         ArchVolatileRegs_x86::Initialize();
+        ScriptInterpreter::Initialize ();
 
 #ifdef __APPLE__
         ABIMacOSX_i386::Initialize();
@@ -116,6 +118,7 @@ lldb_private::Terminate ()
     UnwindAssemblyProfiler_x86::Terminate();
     ArchDefaultUnwindPlan_x86::Terminate();
     ArchVolatileRegs_x86::Terminate();
+    ScriptInterpreter::Terminate ();
 
 #ifdef __APPLE__
     DynamicLoaderMacOSXDYLD::Terminate();

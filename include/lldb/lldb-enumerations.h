@@ -148,7 +148,8 @@ typedef enum Format
     eFormatBytesWithASCII,
     eFormatChar,
     eFormatCharPrintable,   // Only printable characters, space if not printable
-    eFormatComplex,
+    eFormatComplex,         // Floating point complex type
+    eFormatComplexFloat = eFormatComplex,
     eFormatCString,         // NULL terminated C strings
     eFormatDecimal,
     eFormatEnum,
@@ -171,7 +172,8 @@ typedef enum Format
     eFormatVectorOfUInt64,
     eFormatVectorOfFloat32,
     eFormatVectorOfFloat64,
-    eFormatVectorOfUInt128
+    eFormatVectorOfUInt128,
+    eFormatComplexInteger,  // Integer complex type
 
 } Format;
 
@@ -630,6 +632,12 @@ typedef enum ExecutionResults
     eExecutionInterrupted,
     eExecutionTimedOut
 } ExecutionResults;
+
+typedef enum ObjCRuntimeVersions {
+    eObjC_VersionUnknown = 0,
+    eAppleObjC_V1 = 1,
+    eAppleObjC_V2 = 2
+} ObjCRuntimeVersions;
 
 } // namespace lldb
 

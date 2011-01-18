@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <stdint.h>
 
+#include "lldb/Core/DataExtractor.h"
 #include "lldb/Core/Scalar.h"
 #include "lldb/Target/Thread.h"
 
@@ -401,6 +402,12 @@ static unsigned GetRegOffset(unsigned reg)
     return g_register_infos[reg].byte_offset;
 }
 
+static unsigned GetRegSize(unsigned reg)
+{
+    assert(reg < k_num_registers && "Invalid register number.");
+    return g_register_infos[reg].byte_size;
+}
+
 RegisterContextLinux_x86_64::RegisterContextLinux_x86_64(Thread &thread,
                                                          uint32_t concrete_frame_idx)
     : RegisterContextLinux(thread, concrete_frame_idx)
@@ -470,7 +477,28 @@ bool
 RegisterContextLinux_x86_64::ReadRegisterBytes(uint32_t reg,
                                                DataExtractor &data)
 {
-    return false;
+    uint8_t *buf;
+    bool status = false;
+
+    if (reg < k_num_gpr_registers)
+    {
+        buf = reinterpret_cast<uint8_t*>(&user.regs);
+        status = ReadGPR();
+    }
+    else if (reg < k_num_fpu_registers)
+    {
+        buf = reinterpret_cast<uint8_t*>(&user.i387);
+        status = ReadFPR();
+    }
+    else {
+        assert(false && "invalid register number");
+        status = false;
+    }
+
+    if (status)
+        data.SetData(buf + GetRegOffset(reg), GetRegSize(reg), eByteOrderHost);
+
+    return status;
 }
 
 bool
@@ -659,4 +687,18 @@ bool
 RegisterContextLinux_x86_64::HardwareSingleStep(bool enable)
 {
     return GetMonitor().SingleStep(GetThreadID());
+}
+
+bool
+RegisterContextLinux_x86_64::ReadGPR()
+{
+     ProcessMonitor &monitor = GetMonitor();
+     return monitor.ReadGPR(&user.regs);
+}
+
+bool
+RegisterContextLinux_x86_64::ReadFPR()
+{
+    ProcessMonitor &monitor = GetMonitor();
+    return monitor.ReadFPR(&user.i387);
 }

@@ -173,7 +173,7 @@ typedef enum Format
     eFormatVectorOfFloat32,
     eFormatVectorOfFloat64,
     eFormatVectorOfUInt128,
-    eFormatComplexInteger,  // Integer complex type
+    eFormatComplexInteger   // Integer complex type
 
 } Format;
 

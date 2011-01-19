@@ -1807,7 +1807,7 @@ ArchSpec::SetCPUSubtype (uint32_t subtype)
 ByteOrder
 ArchSpec::GetDefaultEndian () const
 {
-    switch (GetGenericCPUType())
+    switch (GetGenericCPUType ())
     {
     case eCPU_ppc:
     case eCPU_ppc64:

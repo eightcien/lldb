@@ -20,6 +20,7 @@
 
 #include "lldb/Core/ConstString.h"
 #include "lldb/Core/Log.h"
+#include "lldb/Core/StreamFile.h"
 #include "lldb/Core/StreamString.h"
 #include "lldb/Core/ValueObjectConstResult.h"
 #include "lldb/Expression/ASTResultSynthesizer.h"
@@ -367,6 +368,12 @@ ClangUserExpression::PrepareToExecuteJITExpression (Stream &error_stream,
             error_stream.Printf("Couldn't materialize struct: %s\n", materialize_error.AsCString());
             return false;
         }
+
+#if 0
+		// jingham: look here
+        StreamFile logfile ("/tmp/exprs.txt", "a");
+        logfile.Printf("0x%16.16llx: thread = 0x%4.4x, expr = '%s'\n", m_jit_addr, exe_ctx.thread ? exe_ctx.thread->GetID() : -1, m_expr_text.c_str());
+#endif
         
         if (log)
         {
@@ -467,7 +474,9 @@ ClangUserExpression::Execute (Stream &error_stream,
                               ClangUserExpression::ClangUserExpressionSP &shared_ptr_to_me,
                               lldb::ClangExpressionVariableSP &result)
 {
-    lldb::LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
+    // The expression log is quite verbose, and if you're just tracking the execution of the
+    // expression, it's quite convenient to have these logs come out with the STEP log as well.
+    lldb::LogSP log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_EXPRESSIONS | LIBLLDB_LOG_STEP));
 
     if (m_dwarf_opcodes.get())
     {
@@ -565,7 +574,7 @@ ClangUserExpression::Evaluate (ExecutionContext &exe_ctx,
                                const char *expr_prefix,
                                lldb::ValueObjectSP &result_valobj_sp)
 {
-    lldb::LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
+    lldb::LogSP log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_EXPRESSIONS | LIBLLDB_LOG_STEP));
 
     Error error;
     lldb::ExecutionResults execution_results = lldb::eExecutionSetupError;

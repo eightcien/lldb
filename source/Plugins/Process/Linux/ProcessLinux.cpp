@@ -8,6 +8,8 @@
 //===----------------------------------------------------------------------===//
 
 // C Includes
+#include <errno.h>
+
 // C++ Includes
 // Other libraries and framework includes
 #include "lldb/Core/PluginManager.h"
@@ -409,6 +411,39 @@ DynamicLoader *
 ProcessLinux::GetDynamicLoader()
 {
     return m_dyld_ap.get();
+}
+
+size_t
+ProcessLinux::PutSTDIN(const char *buf, size_t len, Error &error)
+{
+    ssize_t status;
+    if ((status = write(m_monitor->GetTerminalFD(), buf, len)) < 0) 
+    {
+        error.SetErrorToErrno();
+        return 0;
+    }
+    return status;
+}
+
+size_t
+ProcessLinux::GetSTDOUT(char *buf, size_t len, Error &error)
+{
+    ssize_t bytes_read;
+
+    // The terminal file descriptor is always in non-block mode.
+    if ((bytes_read = read(m_monitor->GetTerminalFD(), buf, len)) < 0) 
+    {
+        if (errno != EAGAIN)
+            error.SetErrorToErrno();
+        return 0;
+    }
+    return bytes_read;
+}
+
+size_t
+ProcessLinux::GetSTDERR(char *buf, size_t len, Error &error)
+{
+    return GetSTDOUT(buf, len, error);
 }
 
 //------------------------------------------------------------------------------

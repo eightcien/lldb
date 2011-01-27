@@ -2894,8 +2894,8 @@ RNBRemote::ExtractThreadIDFromThreadSuffix (const char *p)
                 tid_cstr += strlen ("thread:");
                 tid = strtoul(tid_cstr, NULL, 16);
             }
-            DNBLogThreadedIf (LOG_RNB_PACKETS, "RNBRemote::ExtractThreadIDFromThreadSuffix(%s) got thread 0x%4.4x", p, tid);
         }
+        return tid;
     }
     return GetCurrentThread();
 
@@ -3123,11 +3123,11 @@ RNBRemote::HandlePacket_D (const char *p)
 rnb_err_t
 RNBRemote::HandlePacket_k (const char *p)
 {
-    if (!m_ctx.HasValidProcessID())
-        return SendPacket ("E26");
-    if (!DNBProcessKill (m_ctx.ProcessID()))
-        return SendPacket ("E27");
-    return SendPacket ("OK");
+    // No response to should be sent to the kill packet
+    if (m_ctx.HasValidProcessID())
+        DNBProcessKill (m_ctx.ProcessID());
+    SendPacket ("W09");
+    return rnb_success;
 }
 
 rnb_err_t

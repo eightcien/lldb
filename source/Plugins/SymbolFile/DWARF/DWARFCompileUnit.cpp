@@ -12,6 +12,7 @@
 #include "lldb/Core/Mangled.h"
 #include "lldb/Core/Stream.h"
 #include "lldb/Core/Timer.h"
+#include "lldb/Symbol/ObjectFile.h"
 
 #include "DWARFDebugAbbrev.h"
 #include "DWARFDebugAranges.h"
@@ -219,7 +220,17 @@ DWARFCompileUnit::ExtractDIEsIfNeeded (bool cu_die_only)
                 break;  // We are done with this compile unit!
         }
 
-        assert(offset <= GetNextCompileUnitOffset());
+        if (offset > GetNextCompileUnitOffset())
+        {
+            char path[PATH_MAX];
+            ObjectFile *objfile = m_dwarf2Data->GetObjectFile();
+            if (objfile)
+            {
+                objfile->GetFileSpec().GetPath(path, sizeof(path));
+            }
+            fprintf (stderr, "warning: DWARF compile unit extends beyond its bounds cu 0x%8.8x at 0x%8.8x in '%s'\n", GetOffset(), offset, path);
+            break;
+        }
     }
     SetDIERelations();
     return m_die_array.size();
@@ -628,11 +639,9 @@ DWARFCompileUnit::Index
         const size_t num_attributes = die.GetAttributes(m_dwarf2Data, this, fixed_form_sizes, attributes);
         if (num_attributes > 0)
         {
-            uint32_t i;
-            
             is_variable = tag == DW_TAG_variable;
 
-            for (i=0; i<num_attributes; ++i)
+            for (uint32_t i=0; i<num_attributes; ++i)
             {
                 dw_attr_t attr = attributes.AttributeAtIndex(i);
                 DWARFFormValue form_value;
@@ -756,7 +765,7 @@ DWARFCompileUnit::Index
                 }
                 else
                 {
-                    for (size_t i=0, num_ranges = ranges.Size(); i<num_ranges; ++i)
+                    for (uint32_t i=0, num_ranges = ranges.Size(); i<num_ranges; ++i)
                     {
                         const DWARFDebugRanges::Range *range = ranges.RangeAtIndex (i);
                         aranges->AppendRange (m_offset, range->begin_offset, range->end_offset);

@@ -48,8 +48,8 @@ public:
           const ConstString &name,
           uint32_t byte_size,
           SymbolContextScope *context,
-          uintptr_t encoding_uid,
-          EncodingDataType encoding_type,
+          lldb::user_id_t encoding_uid,
+          EncodingDataType encoding_uid_type,
           const Declaration& decl,
           lldb::clang_type_t clang_qual_type,
           ResolveState clang_type_resolve_state);
@@ -57,6 +57,8 @@ public:
     // This makes an invalid type.  Used for functions that return a Type when they
     // get an error.
     Type();
+    
+    Type (const Type &rhs);
 
     const Type&
     operator= (const Type& rhs);
@@ -88,7 +90,7 @@ public:
     const ConstString&
     GetName();
 
-    uint64_t
+    uint32_t
     GetByteSize();
 
     uint32_t
@@ -202,18 +204,6 @@ public:
     ClangASTContext &
     GetClangASTContext ();
 
-    lldb::clang_type_t 
-    GetChildClangTypeAtIndex (const char *parent_name,
-                              uint32_t idx,
-                              bool transparent_pointers,
-                              bool omit_empty_base_classes,
-                              ConstString& name,
-                              uint32_t &child_byte_size,
-                              int32_t &child_byte_offset,
-                              uint32_t &child_bitfield_bit_size,
-                              uint32_t &child_bitfield_bit_offset,
-                              bool &child_is_base_class);
-
     static int
     Compare(const Type &a, const Type &b);
 
@@ -246,8 +236,8 @@ protected:
     SymbolFile *m_symbol_file;
     SymbolContextScope *m_context; // The symbol context in which this type is defined
     Type *m_encoding_type;
-    EncodingDataType m_encoding_uid_type;
     uint32_t m_encoding_uid;
+    EncodingDataType m_encoding_uid_type;
     uint32_t m_byte_size;
     Declaration m_decl;
     lldb::clang_type_t m_clang_type;
@@ -256,7 +246,8 @@ protected:
     Type *
     GetEncodingType ();
     
-    bool ResolveClangType (ResolveState clang_type_resolve_state);
+    bool 
+    ResolveClangType (ResolveState clang_type_resolve_state);
 };
 
 } // namespace lldb_private

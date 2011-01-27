@@ -1272,10 +1272,10 @@ SymbolFileDWARF::ParseChildMembers
                                     uint32_t block_offset = form_value.BlockData() - debug_info_data.GetDataStart();
                                     if (DWARFExpression::Evaluate (NULL, 
                                                                    NULL, 
-                                                                   debug_info_data, 
                                                                    NULL, 
                                                                    NULL, 
                                                                    NULL,
+                                                                   debug_info_data, 
                                                                    block_offset, 
                                                                    block_length, 
                                                                    eRegisterKindDWARF, 
@@ -2788,6 +2788,8 @@ SymbolFileDWARF::GetClangDeclContextForDIE (DWARFCompileUnit *curr_cu, const DWA
 
     //printf ("SymbolFileDWARF::GetClangDeclContextForDIE ( die = 0x%8.8x )\n", die->GetOffset());
     const DWARFDebugInfoEntry * const decl_die = die;
+    clang::DeclContext *decl_ctx = NULL;
+
     while (die != NULL)
     {
         // If this is the original DIE that we are searching for a declaration 
@@ -2827,13 +2829,21 @@ SymbolFileDWARF::GetClangDeclContextForDIE (DWARFCompileUnit *curr_cu, const DWA
             case DW_TAG_union_type:
             case DW_TAG_class_type:
                 {
-                    ResolveType (curr_cu, die);
+                    Type* type = ResolveType (curr_cu, die);
                     pos = m_die_to_decl_ctx.find(die);
-                    assert (pos != m_die_to_decl_ctx.end());
                     if (pos != m_die_to_decl_ctx.end())
                     {
                         //printf ("SymbolFileDWARF::GetClangDeclContextForDIE ( die = 0x%8.8x ) => 0x%8.8x\n", decl_die->GetOffset(), die->GetOffset());
                         return pos->second;
+                    }
+                    else
+                    {
+                        if (type)
+                        {
+                            decl_ctx = ClangASTContext::GetDeclContextForType (type->GetClangForwardType ());
+                            if (decl_ctx)
+                                return decl_ctx;
+                        }
                     }
                 }
                 break;
@@ -2843,7 +2853,6 @@ SymbolFileDWARF::GetClangDeclContextForDIE (DWARFCompileUnit *curr_cu, const DWA
             }
         }
 
-        clang::DeclContext *decl_ctx;
         dw_offset_t die_offset = die->GetAttributeValueAsReference(this, curr_cu, DW_AT_specification, DW_INVALID_OFFSET);
         if (die_offset != DW_INVALID_OFFSET)
         {
@@ -2873,14 +2882,14 @@ SymbolFileDWARF::GetClangDeclContextForDIE (DWARFCompileUnit *curr_cu, const DWA
 // DIE and we want to try and find a type that has the complete definition.
 TypeSP
 SymbolFileDWARF::FindDefinitionTypeForDIE (
-    DWARFCompileUnit* curr_cu, 
+    DWARFCompileUnit* cu, 
     const DWARFDebugInfoEntry *die, 
     const ConstString &type_name
 )
 {
     TypeSP type_sp;
 
-    if (curr_cu == NULL || die == NULL || !type_name)
+    if (cu == NULL || die == NULL || !type_name)
         return type_sp;
 
     if (!m_indexed)
@@ -2892,7 +2901,7 @@ SymbolFileDWARF::FindDefinitionTypeForDIE (
     if (num_matches > 0)
     {
         DWARFCompileUnit* type_cu = NULL;
-        DWARFCompileUnit* curr_cu = curr_cu;
+        DWARFCompileUnit* curr_cu = cu;
         DWARFDebugInfo *info = DebugInfo();
         for (size_t i=0; i<num_matches; ++i)
         {
@@ -3180,7 +3189,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                     }
 
 
-                    if (is_forward_declaration && die->HasChildren() == false)
+                    if (is_forward_declaration)
                     {
                         // We have a forward declaration to a type and we need
                         // to try and find a full declaration. We look in the
@@ -3190,14 +3199,14 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                     
                         type_sp = FindDefinitionTypeForDIE (dwarf_cu, die, type_name_const_str);
 
-                        if (!type_sp)
+                        if (!type_sp && m_debug_map_symfile)
                         {
                             // We weren't able to find a full declaration in
                             // this DWARF, see if we have a declaration anywhere    
                             // else...
-                            if (m_debug_map_symfile)
-                                type_sp = m_debug_map_symfile->FindDefinitionTypeForDIE (dwarf_cu, die, type_name_const_str);
+                            type_sp = m_debug_map_symfile->FindDefinitionTypeForDIE (dwarf_cu, die, type_name_const_str);
                         }
+
                         if (type_sp)
                         {
                             // We found a real definition for this type elsewhere
@@ -3310,6 +3319,8 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                         clang_type = m_forward_decl_die_to_clang_type.lookup (die);
                         if (clang_type == NULL)
                         {
+                            if (die->GetOffset() == 0x1c436)
+                                printf("REMOVE THIS!!!\n");
                             enumerator_clang_type = ast.GetBuiltinTypeForDWARFEncodingAndBitSize (NULL, 
                                                                                                   DW_ATE_signed, 
                                                                                                   byte_size * 8);
@@ -3351,8 +3362,8 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                         ast.StartTagDeclarationDefinition (clang_type);
                         if (die->HasChildren())
                         {
-                            SymbolContext sc(GetCompUnitForDWARFCompUnit(dwarf_cu));
-                            ParseChildEnumerators(sc, clang_type, type_sp->GetByteSize(), dwarf_cu, die);
+                            SymbolContext cu_sc(GetCompUnitForDWARFCompUnit(dwarf_cu));
+                            ParseChildEnumerators(cu_sc, clang_type, type_sp->GetByteSize(), dwarf_cu, die);
                         }
                         ast.CompleteTagDeclarationDefinition (clang_type);
 #endif
@@ -3385,7 +3396,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                         uint32_t i;
                         for (i=0; i<num_attributes; ++i)
                         {
-                            const dw_attr_t attr = attributes.AttributeAtIndex(i);
+                            attr = attributes.AttributeAtIndex(i);
                             DWARFFormValue form_value;
                             if (attributes.ExtractFormValueAtIndex(this, i, form_value))
                             {

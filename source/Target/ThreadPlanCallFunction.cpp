@@ -48,7 +48,8 @@ ThreadPlanCallFunction::ThreadPlanCallFunction (Thread &thread,
     m_arg_addr (arg),
     m_args (NULL),
     m_process (thread.GetProcess()),
-    m_thread (thread)
+    m_thread (thread),
+    m_takedown_done (false)
 {
     SetOkayToDiscard (discard_on_error);
 
@@ -58,6 +59,8 @@ ThreadPlanCallFunction::ThreadPlanCallFunction (Thread &thread,
     
     if (!abi)
         return;
+    
+    LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_STEP));
     
     SetBreakpoints();
     
@@ -76,9 +79,19 @@ ThreadPlanCallFunction::ThreadPlanCallFunction (Thread &thread,
     m_start_addr = context.symbol->GetValue();
     lldb::addr_t StartLoadAddr = m_start_addr.GetLoadAddress(&target);
 
-    if (!thread.SaveFrameZeroState(m_register_backup))
-        return;
+    // Checkpoint the thread state so we can restore it later.
+    if (log && log->GetVerbose())
+        ReportRegisterState ("About to checkpoint thread before function call.  Original register state was:");
 
+    if (!thread.CheckpointThreadState (m_stored_thread_state))
+    {
+        if (log)
+            log->Printf ("Setting up ThreadPlanCallFunction, failed to checkpoint thread state.");
+        return;
+    }
+    // Now set the thread state to "no reason" so we don't run with whatever signal was outstanding...
+    thread.SetStopInfoToNothing();
+    
     m_function_addr = function;
     lldb::addr_t FunctionLoadAddr = m_function_addr.GetLoadAddress(&target);
         
@@ -91,14 +104,25 @@ ThreadPlanCallFunction::ThreadPlanCallFunction (Thread &thread,
                                  cmd_arg))
         return;
     
-    LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_STEP));
+    ReportRegisterState ("Function call was set up.  Register state was:");
     
+    m_valid = true;    
+}
+
+ThreadPlanCallFunction::~ThreadPlanCallFunction ()
+{
+}
+
+void
+ThreadPlanCallFunction::ReportRegisterState (const char *message)
+{
+    LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_STEP));
     if (log)
     {
         RegisterContext *reg_ctx = m_thread.GetRegisterContext().get();
-        
-        log->PutCString("Function call was set up.  Register state was:");
-        
+
+        log->PutCString(message);
+
         for (uint32_t register_index = 0, num_registers = reg_ctx->GetRegisterCount();
              register_index < num_registers;
              ++register_index)
@@ -109,30 +133,35 @@ ThreadPlanCallFunction::ThreadPlanCallFunction (Thread &thread,
             log->Printf("  %s = 0x%llx", register_name, register_value);
         }
     }
-    
-    m_valid = true;    
-}
-
-ThreadPlanCallFunction::~ThreadPlanCallFunction ()
-{
-    if (m_valid && !IsPlanComplete())
-        DoTakedown();
 }
 
 void
 ThreadPlanCallFunction::DoTakedown ()
 {
-    m_thread.RestoreSaveFrameZero(m_register_backup);
-    m_thread.ClearStackFrames();
-    SetPlanComplete();
-    ClearBreakpoints();
+    LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_STEP));
+    if (!m_takedown_done)
+    {
+        if (log)
+            log->Printf ("DoTakedown called for thread 0x%4.4x, m_valid: %d complete: %d.\n", m_thread.GetID(), m_valid, IsPlanComplete());
+        m_takedown_done = true;
+        m_thread.RestoreThreadStateFromCheckpoint(m_stored_thread_state);
+        SetPlanComplete();
+        ClearBreakpoints();
+        if (log && log->GetVerbose())
+            ReportRegisterState ("Restoring thread state after function call.  Restored register state:");
+
+    }
+    else
+    {
+        if (log)
+            log->Printf ("DoTakedown called as no-op for thread 0x%4.4x, m_valid: %d complete: %d.\n", m_thread.GetID(), m_valid, IsPlanComplete());
+    }
 }
 
 void
 ThreadPlanCallFunction::WillPop ()
 {
-    if (m_valid && !IsPlanComplete())
-        DoTakedown();
+    DoTakedown();
 }
 
 void
@@ -208,7 +237,10 @@ ThreadPlanCallFunction::PlanExplainsStop ()
     else
     {
         // If the subplan is running, any crashes are attributable to us.
-        return (m_subplan_sp.get() != NULL);
+        // If we want to discard the plan, then we say we explain the stop
+        // but if we are going to be discarded, let whoever is above us
+        // explain the stop.
+        return ((m_subplan_sp.get() != NULL) && !OkayToDiscard());
     }
 }
 
@@ -217,24 +249,7 @@ ThreadPlanCallFunction::ShouldStop (Event *event_ptr)
 {
     if (PlanExplainsStop())
     {
-        LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_STEP));
-        
-        if (log)
-        {
-            RegisterContext *reg_ctx = m_thread.GetRegisterContext().get();
-
-            log->PutCString("Function completed.  Register state was:");
-
-            for (uint32_t register_index = 0, num_registers = reg_ctx->GetRegisterCount();
-                 register_index < num_registers;
-                 ++register_index)
-            {
-                const char *register_name = reg_ctx->GetRegisterName(register_index);
-                uint64_t register_value = reg_ctx->ReadRegisterAsUnsigned(register_index, LLDB_INVALID_ADDRESS);
-                
-                log->Printf("  %s = 0x%llx", register_name, register_value);
-            }
-        }
+        ReportRegisterState ("Function completed.  Register state was:");
         
         DoTakedown();
         
@@ -278,6 +293,7 @@ ThreadPlanCallFunction::DidPush ()
     m_subplan_sp.reset(new ThreadPlanRunToAddress(m_thread, m_start_addr, m_stop_other_threads));
     
     m_thread.QueueThreadPlan(m_subplan_sp, false);
+    m_subplan_sp->SetPrivate (true);
 #endif
 }
 

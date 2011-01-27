@@ -316,22 +316,28 @@ ThreadList::ShouldReportRun (Event *event_ptr)
     // Run through the threads and ask whether we should report this event.
     // The rule is NO vote wins over everything, a YES vote wins over no opinion.
 
+    LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_STEP));
+    
     for (pos = m_threads.begin(); pos != end; ++pos)
     {
-        ThreadSP thread_sp(*pos);
-        if (thread_sp->GetResumeState () != eStateSuspended)
-
-        switch (thread_sp->ShouldReportRun (event_ptr))
+        if ((*pos)->GetResumeState () != eStateSuspended)
         {
-            case eVoteNoOpinion:
-                continue;
-            case eVoteYes:
-                if (result == eVoteNoOpinion)
-                    result = eVoteYes;
-                break;
-            case eVoteNo:
-                result = eVoteNo;
-                break;
+            switch ((*pos)->ShouldReportRun (event_ptr))
+            {
+                case eVoteNoOpinion:
+                    continue;
+                case eVoteYes:
+                    if (result == eVoteNoOpinion)
+                        result = eVoteYes;
+                    break;
+                case eVoteNo:
+                    if (log)
+                        log->Printf ("ThreadList::ShouldReportRun() thread %d (0x%4.4x) says don't report.", 
+                                     (*pos)->GetIndexID(), 
+                                     (*pos)->GetID());
+                    result = eVoteNo;
+                    break;
+            }
         }
     }
     return result;
@@ -352,6 +358,10 @@ ThreadList::RefreshStateAfterStop ()
     Mutex::Locker locker(m_threads_mutex);
 
     m_process->UpdateThreadListIfNeeded();
+    
+    LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_STEP));
+    if (log)
+        log->Printf ("Turning off notification of new threads while single stepping a thread.");
 
     collection::iterator pos, end = m_threads.end();
     for (pos = m_threads.begin(); pos != end; ++pos)
@@ -403,6 +413,20 @@ ThreadList::WillResume ()
         }
     }   
 
+    if (wants_solo_run)
+    {
+        LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_STEP));
+        if (log)
+            log->Printf ("Turning on notification of new threads while single stepping a thread.");
+        m_process->StartNoticingNewThreads();
+    }
+    else
+    {
+        LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_STEP));
+        if (log)
+            log->Printf ("Turning off notification of new threads while single stepping a thread.");
+        m_process->StopNoticingNewThreads();
+    }
     
     // Give all the threads that are likely to run a last chance to set up their state before we
     // negotiate who is actually going to get a chance to run...

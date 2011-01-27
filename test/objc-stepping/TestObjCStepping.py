@@ -9,8 +9,6 @@ class TestObjCStepping(TestBase):
 
     mydir = "objc-stepping"
 
-    # rdar://problem/8875425 Found mySource->isa local variable assertion failed
-    @unittest2.expectedFailure
     @unittest2.skipUnless(sys.platform.startswith("darwin"), "requires Darwin")
     @python_api_test
     def test_with_dsym_and_python_api(self):
@@ -18,8 +16,6 @@ class TestObjCStepping(TestBase):
         self.buildDsym()
         self.objc_stepping()
 
-    # rdar://problem/8875425 Found mySource->isa local variable assertion failed
-    @unittest2.expectedFailure
     @python_api_test
     def test_with_dwarf_and_python_api(self):
         """Test stepping through ObjC method dispatch in various forms."""
@@ -68,7 +64,8 @@ class TestObjCStepping(TestBase):
         self.assertTrue(break_returnStruct_call_super.IsValid(), VALID_BREAKPOINT)
 
         # Now launch the process, and do not stop at entry point.
-        self.process = target.LaunchProcess([], [], os.ctermid(), 0, False)
+        error = lldb.SBError()
+        self.process = target.Launch (None, None, os.ctermid(), os.ctermid(), os.ctermid(), None, 0, False, error)
 
         self.assertTrue(self.process.IsValid(), PROCESS_IS_VALID)
 

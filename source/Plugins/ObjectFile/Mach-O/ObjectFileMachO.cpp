@@ -202,11 +202,11 @@ ObjectFileMachO::GetAddressByteSize () const
 Symtab *
 ObjectFileMachO::GetSymtab()
 {
-    lldb_private::Mutex::Locker locker(m_mutex);
+    lldb_private::Mutex::Locker symfile_locker(m_mutex);
     if (m_symtab_ap.get() == NULL)
     {
         m_symtab_ap.reset(new Symtab(this));
-        Mutex::Locker locker (m_symtab_ap->GetMutex());
+        Mutex::Locker symtab_locker (m_symtab_ap->GetMutex());
         ParseSymtab (true);
     }
     return m_symtab_ap.get();
@@ -251,6 +251,9 @@ ObjectFileMachO::ParseSections ()
                 load_cmd.filesize = m_data.GetAddress(&offset);
                 if (m_data.GetU32(&offset, &load_cmd.maxprot, 4))
                 {
+                    
+                    const bool segment_is_encrypted = (load_cmd.flags & SegmentCommandFlagBitProtectedVersion1) != 0;
+
                     // Keep a list of mach segments around in case we need to
                     // get at data that isn't stored in the abstracted Sections.
                     m_mach_segments.push_back (load_cmd);
@@ -272,6 +275,7 @@ ObjectFileMachO::ParseSections ()
                                                       load_cmd.filesize,      // Size in bytes of this section as found in the the file
                                                       load_cmd.flags));       // Flags for this section
 
+                        segment_sp->SetIsEncrypted (segment_is_encrypted);
                         m_sections_ap->AddSection(segment_sp);
                     }
 
@@ -369,6 +373,7 @@ ObjectFileMachO::ParseSections ()
                                                              load_cmd.flags));       // Flags for this section
                                 segment_sp->SetIsFake(true);
                                 m_sections_ap->AddSection(segment_sp);
+                                segment_sp->SetIsEncrypted (segment_is_encrypted);
                             }
                         }
                         assert (segment_sp.get());
@@ -482,6 +487,9 @@ ObjectFileMachO::ParseSections ()
                                                          sect64.offset,
                                                          sect64.offset == 0 ? 0 : sect64.size,
                                                          sect64.flags));
+                        // Set the section to be encrypted to match the segment
+                        section_sp->SetIsEncrypted (segment_is_encrypted);
+
                         segment_sp->GetChildren().AddSection(section_sp);
 
                         if (segment_sp->IsFake())

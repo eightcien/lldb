@@ -15,6 +15,10 @@
 		2618D7921240116900F2B8FE /* SectionLoadList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2618D7911240116900F2B8FE /* SectionLoadList.cpp */; };
 		2618D9EB12406FE600F2B8FE /* NameToDIE.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2618D9EA12406FE600F2B8FE /* NameToDIE.cpp */; };
 		261B5A5411C3F2AD00AABD0A /* SharingPtr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 261B5A5211C3F2AD00AABD0A /* SharingPtr.cpp */; };
+		2621C9CD12EA009300711A30 /* EmulateInstructionARM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2621C9CB12EA009300711A30 /* EmulateInstructionARM.cpp */; };
+		2621C9CE12EA009300711A30 /* EmulateInstruction.h in Headers */ = {isa = PBXBuildFile; fileRef = 2621C9CC12EA009300711A30 /* EmulateInstruction.h */; };
+		2621C9D012EA066500711A30 /* EmulateInstructionARM.h in Headers */ = {isa = PBXBuildFile; fileRef = 2621C9CF12EA066500711A30 /* EmulateInstructionARM.h */; };
+		2621CA0B12EA107700711A30 /* EmulateInstruction.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2621CA0A12EA107700711A30 /* EmulateInstruction.cpp */; };
 		262CFC7711A4510000946C6C /* debugserver in Resources */ = {isa = PBXBuildFile; fileRef = 26CE05A0115C31E50022F371 /* debugserver */; };
 		2635DA87127D0D0400675BC1 /* SharingPtr.h in Headers */ = {isa = PBXBuildFile; fileRef = 261B5A5311C3F2AD00AABD0A /* SharingPtr.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		26368A3C126B697600E8659F /* darwin-debug.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 26368A3B126B697600E8659F /* darwin-debug.cpp */; };
@@ -379,7 +383,10 @@
 		AF68D2561255416E002FF25B /* RegisterContextLLDB.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AF68D2541255416E002FF25B /* RegisterContextLLDB.cpp */; };
 		AF68D3311255A111002FF25B /* UnwindLLDB.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AF68D32F1255A110002FF25B /* UnwindLLDB.cpp */; };
 		AF94005911C03F6500085DB9 /* SymbolVendor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AF94005711C03F6500085DB9 /* SymbolVendor.cpp */; };
+		B23DD25012EDFAC1000C3894 /* ARMUtils.h in Headers */ = {isa = PBXBuildFile; fileRef = B23DD24F12EDFAC1000C3894 /* ARMUtils.h */; };
+		B287E63F12EFAE2C00C9BEFE /* ARMDefines.h in Headers */ = {isa = PBXBuildFile; fileRef = B287E63E12EFAE2C00C9BEFE /* ARMDefines.h */; };
 		B296983712C2FB98002D92C3 /* CommandObjectVersion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B296983412C2FB2B002D92C3 /* CommandObjectVersion.cpp */; };
+		B2D3033712EFA5C500F84EB3 /* InstructionUtils.h in Headers */ = {isa = PBXBuildFile; fileRef = B2D3033612EFA5C500F84EB3 /* InstructionUtils.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -540,6 +547,10 @@
 		261B5A5311C3F2AD00AABD0A /* SharingPtr.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = SharingPtr.h; path = include/lldb/Utility/SharingPtr.h; sourceTree = "<group>"; };
 		261E18CC1148966100BADCD3 /* GDBRemoteRegisterContext.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = GDBRemoteRegisterContext.h; path = "source/Plugins/Process/gdb-remote/GDBRemoteRegisterContext.h"; sourceTree = "<group>"; };
 		261E18CD1148966100BADCD3 /* GDBRemoteRegisterContext.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = GDBRemoteRegisterContext.cpp; path = "source/Plugins/Process/gdb-remote/GDBRemoteRegisterContext.cpp"; sourceTree = "<group>"; };
+		2621C9CB12EA009300711A30 /* EmulateInstructionARM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = EmulateInstructionARM.cpp; path = Utility/EmulateInstructionARM.cpp; sourceTree = "<group>"; };
+		2621C9CC12EA009300711A30 /* EmulateInstruction.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = EmulateInstruction.h; path = Utility/EmulateInstruction.h; sourceTree = "<group>"; };
+		2621C9CF12EA066500711A30 /* EmulateInstructionARM.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = EmulateInstructionARM.h; path = Utility/EmulateInstructionARM.h; sourceTree = "<group>"; };
+		2621CA0A12EA107700711A30 /* EmulateInstruction.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = EmulateInstruction.cpp; path = Utility/EmulateInstruction.cpp; sourceTree = "<group>"; };
 		263664921140A4930075843B /* Debugger.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Debugger.cpp; path = source/Core/Debugger.cpp; sourceTree = "<group>"; };
 		263664941140A4C10075843B /* Debugger.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Debugger.h; path = include/lldb/Core/Debugger.h; sourceTree = "<group>"; };
 		26368A3B126B697600E8659F /* darwin-debug.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = "darwin-debug.cpp"; path = "tools/darwin-debug/darwin-debug.cpp"; sourceTree = "<group>"; };
@@ -1086,8 +1097,11 @@
 		AF68D32F1255A110002FF25B /* UnwindLLDB.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = UnwindLLDB.cpp; path = Utility/UnwindLLDB.cpp; sourceTree = "<group>"; };
 		AF68D3301255A110002FF25B /* UnwindLLDB.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = UnwindLLDB.h; path = Utility/UnwindLLDB.h; sourceTree = "<group>"; };
 		AF94005711C03F6500085DB9 /* SymbolVendor.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = SymbolVendor.cpp; path = source/Symbol/SymbolVendor.cpp; sourceTree = "<group>"; };
+		B23DD24F12EDFAC1000C3894 /* ARMUtils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = ARMUtils.h; path = Utility/ARMUtils.h; sourceTree = "<group>"; };
+		B287E63E12EFAE2C00C9BEFE /* ARMDefines.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = ARMDefines.h; path = Utility/ARMDefines.h; sourceTree = "<group>"; };
 		B296983412C2FB2B002D92C3 /* CommandObjectVersion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = CommandObjectVersion.cpp; path = source/Commands/CommandObjectVersion.cpp; sourceTree = "<group>"; };
 		B296983512C2FB2B002D92C3 /* CommandObjectVersion.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = CommandObjectVersion.h; path = source/Commands/CommandObjectVersion.h; sourceTree = "<group>"; };
+		B2D3033612EFA5C500F84EB3 /* InstructionUtils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = InstructionUtils.h; path = Utility/InstructionUtils.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1601,6 +1615,13 @@
 		26B4666E11A2080F00CF6220 /* Utility */ = {
 			isa = PBXGroup;
 			children = (
+				B2D3033612EFA5C500F84EB3 /* InstructionUtils.h */,
+				B287E63E12EFAE2C00C9BEFE /* ARMDefines.h */,
+				B23DD24F12EDFAC1000C3894 /* ARMUtils.h */,
+				2621C9CC12EA009300711A30 /* EmulateInstruction.h */,
+				2621CA0A12EA107700711A30 /* EmulateInstruction.cpp */,
+				2621C9CF12EA066500711A30 /* EmulateInstructionARM.h */,
+				2621C9CB12EA009300711A30 /* EmulateInstructionARM.cpp */,
 				AF68D32F1255A110002FF25B /* UnwindLLDB.cpp */,
 				AF68D3301255A110002FF25B /* UnwindLLDB.h */,
 				AF68D2541255416E002FF25B /* RegisterContextLLDB.cpp */,
@@ -2299,6 +2320,11 @@
 				266A42D8128E40040090CF7C /* ClangNamespaceDecl.h in Headers */,
 				26E6902F129C6BD500DDECD9 /* ClangExternalASTSourceCallbacks.h in Headers */,
 				4C7CF7E41295E10E00B4FBB5 /* ThreadPlanCallUserExpression.h in Headers */,
+				2621C9CE12EA009300711A30 /* EmulateInstruction.h in Headers */,
+				2621C9D012EA066500711A30 /* EmulateInstructionARM.h in Headers */,
+				B23DD25012EDFAC1000C3894 /* ARMUtils.h in Headers */,
+				B2D3033712EFA5C500F84EB3 /* InstructionUtils.h in Headers */,
+				B287E63F12EFAE2C00C9BEFE /* ARMDefines.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2800,6 +2826,8 @@
 				26E69031129C6BEF00DDECD9 /* ClangExternalASTSourceCallbacks.cpp in Sources */,
 				4C7CF7E61295E12B00B4FBB5 /* ThreadPlanCallUserExpression.cpp in Sources */,
 				B296983712C2FB98002D92C3 /* CommandObjectVersion.cpp in Sources */,
+				2621C9CD12EA009300711A30 /* EmulateInstructionARM.cpp in Sources */,
+				2621CA0B12EA107700711A30 /* EmulateInstruction.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2854,8 +2882,15 @@
 					__STDC_LIMIT_MACROS,
 					LLDB_CONFIGURATION_DEBUG,
 				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = NO;
+				GCC_WARN_ABOUT_MISSING_NEWLINE = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_EFFECTIVE_CPLUSPLUS_VIOLATIONS = NO;
 				GCC_WARN_HIDDEN_VIRTUAL_FUNCTIONS = YES;
+				GCC_WARN_INITIALIZER_NOT_FULLY_BRACKETED = YES;
+				GCC_WARN_MISSING_PARENTHESES = YES;
+				GCC_WARN_NON_VIRTUAL_DESTRUCTOR = YES;
+				GCC_WARN_UNUSED_VALUE = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PREBINDING = NO;
@@ -2877,8 +2912,15 @@
 					__STDC_LIMIT_MACROS,
 					LLDB_CONFIGURATION_RELEASE,
 				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = NO;
+				GCC_WARN_ABOUT_MISSING_NEWLINE = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_EFFECTIVE_CPLUSPLUS_VIOLATIONS = NO;
 				GCC_WARN_HIDDEN_VIRTUAL_FUNCTIONS = YES;
+				GCC_WARN_INITIALIZER_NOT_FULLY_BRACKETED = YES;
+				GCC_WARN_MISSING_PARENTHESES = YES;
+				GCC_WARN_NON_VIRTUAL_DESTRUCTOR = YES;
+				GCC_WARN_UNUSED_VALUE = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				PREBINDING = NO;
 				VALID_ARCHS = "x86_64 i386";
@@ -2934,9 +2976,9 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 44;
 				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 41;
+				DYLIB_CURRENT_VERSION = 44;
 				EXPORTED_SYMBOLS_FILE = "resources/lldb-framework-exports";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -2991,11 +3033,11 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 44;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 41;
+				DYLIB_CURRENT_VERSION = 44;
 				EXPORTED_SYMBOLS_FILE = "resources/lldb-framework-exports";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -3058,8 +3100,15 @@
 					__STDC_LIMIT_MACROS,
 					LLDB_CONFIGURATION_BUILD_AND_INTEGRATION,
 				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = NO;
+				GCC_WARN_ABOUT_MISSING_NEWLINE = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_EFFECTIVE_CPLUSPLUS_VIOLATIONS = NO;
 				GCC_WARN_HIDDEN_VIRTUAL_FUNCTIONS = YES;
+				GCC_WARN_INITIALIZER_NOT_FULLY_BRACKETED = YES;
+				GCC_WARN_MISSING_PARENTHESES = YES;
+				GCC_WARN_NON_VIRTUAL_DESTRUCTOR = YES;
+				GCC_WARN_UNUSED_VALUE = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				PREBINDING = NO;
 				VALID_ARCHS = "x86_64 i386";
@@ -3070,7 +3119,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COPY_PHASE_STRIP = YES;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 44;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -3105,11 +3154,11 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				COPY_PHASE_STRIP = YES;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 44;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 41;
+				DYLIB_CURRENT_VERSION = 44;
 				EXPORTED_SYMBOLS_FILE = "resources/lldb-framework-exports";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -3163,7 +3212,7 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = lldb_codesign;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 44;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"$(SYSTEM_LIBRARY_DIR)/PrivateFrameworks\"",
@@ -3201,7 +3250,7 @@
 				);
 				CODE_SIGN_IDENTITY = lldb_codesign;
 				COPY_PHASE_STRIP = YES;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 44;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",

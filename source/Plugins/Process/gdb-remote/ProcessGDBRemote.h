@@ -82,8 +82,9 @@ public:
               char const *envp[],           // Can be NULL
               uint32_t flags,
               const char *stdin_path,       // Can be NULL
-              const char *stdout_path,  // Can be NULL
-              const char *stderr_path); // Can be NULL
+              const char *stdout_path,      // Can be NULL
+              const char *stderr_path,      // Can be NULL
+              const char *working_dir);     // Can be NULL
 
     virtual void
     DidLaunch ();
@@ -216,6 +217,12 @@ public:
 
     virtual lldb_private::DynamicLoader *
     GetDynamicLoader ();
+    
+    virtual bool
+    StartNoticingNewThreads();    
+
+    virtual bool
+    StopNoticingNewThreads();    
 
 protected:
     friend class ThreadGDBRemote;
@@ -286,6 +293,9 @@ protected:
                              char const *inferior_argv[],
                              char const *inferior_envp[],
                              const char *stdin_path,
+                             const char *stdout_path,
+                             const char *stderr_path,
+                             const char *working_dir,
                              bool launch_process,           // Set to true if we are going to be launching a the process
                              lldb::pid_t attach_pid,        // If inferior inferior_argv == NULL, then attach to this pid
                              const char *attach_pid_name,   // Wait for the next process to launch whose basename matches "attach_wait_name"
@@ -336,6 +346,7 @@ protected:
     size_t m_max_memory_size;       // The maximum number of bytes to read/write when reading and writing memory
     bool m_waiting_for_attach;
     bool m_local_debugserver;  // Is the debugserver process we are talking to local or on another machine.
+    std::vector<lldb::user_id_t>  m_thread_observation_bps;
 
     void
     ResetGDBRemoteState ();
@@ -375,10 +386,21 @@ protected:
                                const char *bytes, 
                                size_t bytes_len);
 
+    lldb_private::Error
+    InterruptIfRunning (bool discard_thread_plans, 
+                        bool catch_stop_event, 
+                        lldb::EventSP &stop_event_sp);
+
 private:
     //------------------------------------------------------------------
     // For ProcessGDBRemote only
     //------------------------------------------------------------------
+    static bool
+    NewThreadNotifyBreakpointHit (void *baton,
+                         lldb_private::StoppointCallbackContext *context,
+                         lldb::user_id_t break_id,
+                         lldb::user_id_t break_loc_id);
+
     DISALLOW_COPY_AND_ASSIGN (ProcessGDBRemote);
 
 };

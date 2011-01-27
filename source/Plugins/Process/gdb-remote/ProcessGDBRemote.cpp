@@ -119,7 +119,8 @@ ProcessGDBRemote::ProcessGDBRemote(Target& target, Listener &listener) :
     m_packet_timeout (1),
     m_max_memory_size (512),
     m_waiting_for_attach (false),
-    m_local_debugserver (true)
+    m_local_debugserver (true),
+    m_thread_observation_bps()
 {
 }
 
@@ -374,7 +375,8 @@ ProcessGDBRemote::DoLaunch
     uint32_t launch_flags,
     const char *stdin_path,
     const char *stdout_path,
-    const char *stderr_path
+    const char *stderr_path,
+    const char *working_dir
 )
 {
     Error error;
@@ -399,7 +401,10 @@ ProcessGDBRemote::DoLaunch
             error = StartDebugserverProcess (host_port,
                                              argv,
                                              envp,
-                                             NULL, //stdin_path,
+                                             stdin_path,
+                                             stdout_path,
+                                             stderr_path,
+                                             working_dir,
                                              launch_process,
                                              LLDB_INVALID_PROCESS_ID,
                                              NULL, false,
@@ -419,10 +424,14 @@ ProcessGDBRemote::DoLaunch
             error = StartDebugserverProcess (host_port,
                                              NULL,
                                              NULL,
-                                             NULL, //stdin_path
+                                             stdin_path,
+                                             stdout_path,
+                                             stderr_path,
+                                             working_dir,
                                              launch_process,
                                              LLDB_INVALID_PROCESS_ID,
-                                             NULL, false,
+                                             NULL, 
+                                             false,
                                              launch_flags,
                                              inferior_arch);
             if (error.Fail())
@@ -540,7 +549,7 @@ ProcessGDBRemote::ConnectToDebugserver (const char *host_port)
     if (m_gdb_comm.StartReadThread(&error))
     {
         // Send an initial ack
-        m_gdb_comm.SendAck('+');
+        m_gdb_comm.SendAck();
 
         if (m_debugserver_pid != LLDB_INVALID_PROCESS_ID)
             m_debugserver_thread = Host::StartMonitoringChildProcess (MonitorDebugserverProcess,
@@ -643,6 +652,9 @@ ProcessGDBRemote::DoAttachToProcessWithID (lldb::pid_t attach_pid)
                                          NULL,                      // inferior_argv
                                          NULL,                      // inferior_envp
                                          NULL,                      // stdin_path
+                                         NULL,                      // stdout_path
+                                         NULL,                      // stderr_path
+                                         NULL,                      // working_dir
                                          false,                     // launch_process == false (we are attaching)
                                          LLDB_INVALID_PROCESS_ID,   // Don't send any attach to pid options to debugserver
                                          NULL,                      // Don't send any attach by process name option to debugserver
@@ -745,6 +757,9 @@ ProcessGDBRemote::DoAttachToProcessWithName (const char *process_name, bool wait
                                          NULL,                      // inferior_argv
                                          NULL,                      // inferior_envp
                                          NULL,                      // stdin_path
+                                         NULL,                      // stdout_path
+                                         NULL,                      // stderr_path
+                                         NULL,                      // working_dir
                                          false,                     // launch_process == false (we are attaching)
                                          LLDB_INVALID_PROCESS_ID,   // Don't send any attach to pid options to debugserver
                                          NULL,                      // Don't send any attach by process name option to debugserver
@@ -1083,13 +1098,13 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                 gdb_thread->SetName (thread_name.empty() ? thread_name.c_str() : NULL);
                 if (exc_type != 0)
                 {
-                    const size_t exc_data_count = exc_data.size();
+                    const size_t exc_data_size = exc_data.size();
 
                     gdb_thread->SetStopInfo (StopInfoMachException::CreateStopReasonWithMachException (*thread_sp,
                                                                                                        exc_type, 
-                                                                                                       exc_data_count,
-                                                                                                       exc_data_count >= 1 ? exc_data[0] : 0,
-                                                                                                       exc_data_count >= 2 ? exc_data[1] : 0));
+                                                                                                       exc_data_size,
+                                                                                                       exc_data_size >= 1 ? exc_data[0] : 0,
+                                                                                                       exc_data_size >= 2 ? exc_data[1] : 0));
                 }
                 else if (signo)
                 {
@@ -1140,59 +1155,110 @@ Error
 ProcessGDBRemote::DoHalt (bool &caused_stop)
 {
     Error error;
-    
-    if (m_gdb_comm.IsRunning())
-    {
-        caused_stop = true;
-        bool timed_out = false;
-        Mutex::Locker locker;
 
-        if (!m_gdb_comm.SendInterrupt (locker, 2, &timed_out))
-        {
-            if (timed_out)
-                error.SetErrorString("timed out sending interrupt packet");
-            else
-                error.SetErrorString("unknown error sending interrupt packet");
-        }
-    }
-    else
+    bool timed_out = false;
+    Mutex::Locker locker;
+
+    if (!m_gdb_comm.SendInterrupt (locker, 2, caused_stop, timed_out))
     {
-        caused_stop = false;
+        if (timed_out)
+            error.SetErrorString("timed out sending interrupt packet");
+        else
+            error.SetErrorString("unknown error sending interrupt packet");
     }
 
     return error;
 }
 
 Error
-ProcessGDBRemote::WillDetach ()
+ProcessGDBRemote::InterruptIfRunning 
+(
+    bool discard_thread_plans, 
+    bool catch_stop_event, 
+    EventSP &stop_event_sp
+)
 {
     Error error;
 
-    if (m_gdb_comm.IsRunning())
+    LogSP log (ProcessGDBRemoteLog::GetLogIfAllCategoriesSet(GDBR_LOG_PROCESS));
+    
+    bool paused_private_state_thread = false;
+    const bool is_running = m_gdb_comm.IsRunning();
+    if (log)
+        log->Printf ("ProcessGDBRemote::InterruptIfRunning(discard_thread_plans=%i, catch_stop_event=%i) is_running=%i", 
+                     discard_thread_plans, 
+                     catch_stop_event,
+                     is_running);
+
+    if (discard_thread_plans)
     {
-        bool timed_out = false;
-        Mutex::Locker locker;
-        PausePrivateStateThread();
+        if (log)
+            log->Printf ("ProcessGDBRemote::InterruptIfRunning() discarding all thread plans");
         m_thread_list.DiscardThreadPlans();
-        m_debugserver_pid = LLDB_INVALID_PROCESS_ID;
-        if (!m_gdb_comm.SendInterrupt (locker, 2, &timed_out))
+    }
+    if (is_running)
+    {
+        if (catch_stop_event)
+        {
+            if (log)
+                log->Printf ("ProcessGDBRemote::InterruptIfRunning() pausing private state thread");
+            PausePrivateStateThread();
+            paused_private_state_thread = true;
+        }
+
+        bool timed_out = false;
+        bool sent_interrupt = false;
+        Mutex::Locker locker;
+        
+        //m_debugserver_pid = LLDB_INVALID_PROCESS_ID;
+        if (!m_gdb_comm.SendInterrupt (locker, 1, sent_interrupt, timed_out))
         {
             if (timed_out)
                 error.SetErrorString("timed out sending interrupt packet");
             else
                 error.SetErrorString("unknown error sending interrupt packet");
+            if (paused_private_state_thread)
+                ResumePrivateStateThread();
+            return error;
+        }
+        
+        if (catch_stop_event)
+        {
+            // LISTEN HERE
+            TimeValue timeout_time;
+            timeout_time = TimeValue::Now();
+            timeout_time.OffsetWithSeconds(5);
+            StateType state = WaitForStateChangedEventsPrivate (&timeout_time, stop_event_sp);
+    
+            timed_out = state == eStateInvalid;
+            if (log)
+                log->Printf ("ProcessGDBRemote::InterruptIfRunning() catch stop event: state = %s, timed-out=%i", StateAsCString(state), timed_out);
+
+            if (timed_out)
+                error.SetErrorString("unable to verify target stopped");
+        }
+        
+        if (paused_private_state_thread)
+        {
+            if (log)
+                log->Printf ("ProcessGDBRemote::InterruptIfRunning() resuming private state thread");
             ResumePrivateStateThread();
         }
-        TimeValue timeout_time;
-        timeout_time = TimeValue::Now();
-        timeout_time.OffsetWithSeconds(2);
-
-        EventSP event_sp;
-        StateType state = WaitForStateChangedEventsPrivate (&timeout_time, event_sp);
-        if (state != eStateStopped)
-            error.SetErrorString("unable to stop target");
     }
     return error;
+}
+
+Error
+ProcessGDBRemote::WillDetach ()
+{
+    LogSP log (ProcessGDBRemoteLog::GetLogIfAllCategoriesSet(GDBR_LOG_PROCESS));
+    if (log)
+        log->Printf ("ProcessGDBRemote::WillDetach()");
+
+    bool discard_thread_plans = true; 
+    bool catch_stop_event = true;
+    EventSP event_sp;
+    return InterruptIfRunning (discard_thread_plans, catch_stop_event, event_sp);
 }
 
 Error
@@ -1237,24 +1303,26 @@ ProcessGDBRemote::DoDestroy ()
         log->Printf ("ProcessGDBRemote::DoDestroy()");
 
     // Interrupt if our inferior is running...
-    Mutex::Locker locker;
-    m_gdb_comm.SendInterrupt (locker, 1);
-    DisableAllBreakpointSites ();
-    SetExitStatus(-1, "process killed");
-
-    StringExtractorGDBRemote response;
-    if (m_gdb_comm.SendPacketAndWaitForResponse("k", response, 1, false))
+    if (m_gdb_comm.IsConnected())
     {
-        log = ProcessGDBRemoteLog::GetLogIfAllCategoriesSet(GDBR_LOG_PROCESS);
-        if (log)
+        StringExtractorGDBRemote response;
+        bool send_async = true;
+        if (m_gdb_comm.SendPacketAndWaitForResponse("k", 1, response, 2, send_async))
         {
-            if (response.IsOKPacket())
-                log->Printf ("ProcessGDBRemote::DoDestroy() kill was successful");
-            else
-                log->Printf ("ProcessGDBRemote::DoDestroy() kill failed: %s", response.GetStringRef().c_str());
+            char packet_cmd = response.GetChar(0);
+
+            if (packet_cmd == 'W' || packet_cmd == 'X')
+            {
+                m_last_stop_packet = response;
+                SetExitStatus(response.GetHexU8(), NULL);
+            }
+        }
+        else
+        {
+            SetExitStatus(SIGABRT, NULL);
+            //error.SetErrorString("kill packet failed");
         }
     }
-
     StopAsyncThread ();
     m_gdb_comm.StopReadThread();
     KillDebugserverProcess ();
@@ -1680,7 +1748,10 @@ ProcessGDBRemote::StartDebugserverProcess
     const char *debugserver_url,    // The connection string to use in the spawned debugserver ("localhost:1234" or "/dev/tty...")
     char const *inferior_argv[],    // Arguments for the inferior program including the path to the inferior itself as the first argument
     char const *inferior_envp[],    // Environment to pass along to the inferior program
-    char const *stdio_path,
+    const char *stdin_path,
+    const char *stdout_path,
+    const char *stderr_path,
+    const char *working_dir,
     bool launch_process,            // Set to true if we are going to be launching a the process
     lldb::pid_t attach_pid,         // If inferior inferior_argv == NULL, and attach_pid != LLDB_INVALID_PROCESS_ID send this pid as an argument to debugserver
     const char *attach_name,        // Wait for the next process to launch whose basename matches "attach_name"
@@ -1772,7 +1843,13 @@ ProcessGDBRemote::StartDebugserverProcess
             char arg_cstr[PATH_MAX];
 
             lldb_utility::PseudoTerminal pty;
-            if (launch_process && stdio_path == NULL && m_local_debugserver && !no_stdio)
+            const char *stdio_path = NULL;
+            if (launch_process && 
+                stdin_path == NULL && 
+                stdout_path == NULL && 
+                stderr_path == NULL && 
+                m_local_debugserver &&
+                no_stdio == false)
             {
                 if (pty.OpenFirstAvailableMaster(O_RDWR|O_NOCTTY, NULL, 0))
                     stdio_path = pty.GetSlaveName (NULL, 0);
@@ -1791,14 +1868,60 @@ ProcessGDBRemote::StartDebugserverProcess
                 debugserver_args.AppendArguments("--disable-aslr");
             
             // Only set the inferior
-            if (launch_process && stdio_path)
+            if (launch_process)
             {
-                debugserver_args.AppendArgument("--stdio-path");
-                debugserver_args.AppendArgument(stdio_path);
+                if (no_stdio)
+                    debugserver_args.AppendArgument("--no-stdio");
+                else
+                {
+                    if (stdin_path && stdout_path && stderr_path && 
+                        strcmp(stdin_path, stdout_path) == 0 &&
+                        strcmp(stdin_path, stderr_path) == 0)
+                    {
+                        stdio_path = stdin_path;
+                        stdin_path = stdout_path = stderr_path = NULL;
+                    }
+
+                    if (stdio_path)
+                    {
+                        // All file handles to stdin, stdout, stderr are the same...
+                        debugserver_args.AppendArgument("--stdio-path");
+                        debugserver_args.AppendArgument(stdio_path);
+                    }
+                    else
+                    {
+                        if (stdin_path == NULL && (stdout_path || stderr_path))
+                            stdin_path = "/dev/null";
+
+                        if (stdout_path == NULL && (stdin_path || stderr_path))
+                            stdout_path = "/dev/null";
+
+                        if (stderr_path == NULL && (stdin_path || stdout_path))
+                            stderr_path = "/dev/null";
+
+                        if (stdin_path)
+                        {
+                            debugserver_args.AppendArgument("--stdin-path");
+                            debugserver_args.AppendArgument(stdin_path);
+                        }
+                        if (stdout_path)
+                        {
+                            debugserver_args.AppendArgument("--stdout-path");
+                            debugserver_args.AppendArgument(stdout_path);
+                        }
+                        if (stderr_path)
+                        {
+                            debugserver_args.AppendArgument("--stderr-path");
+                            debugserver_args.AppendArgument(stderr_path);
+                        }
+                    }
+                }
             }
-            else if (launch_process && no_stdio)
+
+            if (working_dir)
             {
-                debugserver_args.AppendArgument("--no-stdio");
+                debugserver_args.AppendArgument("--working-dir");
+                debugserver_args.AppendArgument(working_dir);
             }
 
             const char *env_debugserver_log_file = getenv("LLDB_DEBUGSERVER_LOG_FILE");
@@ -1869,14 +1992,14 @@ ProcessGDBRemote::StartDebugserverProcess
                 log->Printf("%s arguments:\n%s", debugserver_args.GetArgumentAtIndex(0), strm.GetData());
             }
 
-            error.SetError(::posix_spawnp (&m_debugserver_pid,
-                                             debugserver_path,
-                                             file_actions_err.Success() ? &file_actions : NULL,
-                                             &attr,
-                                             debugserver_args.GetArgumentVector(),
-                                             (char * const*)inferior_envp),
-                             eErrorTypePOSIX);
-
+            error.SetError (::posix_spawnp (&m_debugserver_pid,
+                                            debugserver_path,
+                                            file_actions_err.Success() ? &file_actions : NULL,
+                                            &attr,
+                                            debugserver_args.GetArgumentVector(),
+                                            (char * const*)inferior_envp),
+                            eErrorTypePOSIX);
+            
 
             ::posix_spawnattr_destroy (&attr);
 
@@ -1925,7 +2048,11 @@ ProcessGDBRemote::MonitorDebugserverProcess
     // debugserver that we are tracking...
 
     ProcessGDBRemote *process = (ProcessGDBRemote *)callback_baton;
-    
+
+    LogSP log (ProcessGDBRemoteLog::GetLogIfAllCategoriesSet(GDBR_LOG_PROCESS));
+    if (log)
+        log->Printf ("ProcessGDBRemote::MonitorDebugserverProcess (baton=%p, pid=%i, signo=%i (0x%x), exit_status=%i)", callback_baton, debugserver_pid, signo, signo, exit_status);
+
     if (process)
     {
         // Sleep for a half a second to make sure our inferior process has
@@ -2279,3 +2406,91 @@ ProcessGDBRemote::ListProcessesMatchingName (const char *name, StringList &match
     }
 
 }
+
+bool
+ProcessGDBRemote::NewThreadNotifyBreakpointHit (void *baton,
+                             lldb_private::StoppointCallbackContext *context,
+                             lldb::user_id_t break_id,
+                             lldb::user_id_t break_loc_id)
+{
+    // I don't think I have to do anything here, just make sure I notice the new thread when it starts to 
+    // run so I can stop it if that's what I want to do.
+    LogSP log (lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_STEP));
+    if (log)
+        log->Printf("Hit New Thread Notification breakpoint.");
+    return false;
+}
+
+
+bool
+ProcessGDBRemote::StartNoticingNewThreads()
+{
+    static const char *bp_names[] =
+    {
+        "start_wqthread",
+        "_pthread_start",
+        NULL
+    };
+    
+    LogSP log (lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_STEP));
+    size_t num_bps = m_thread_observation_bps.size();
+    if (num_bps != 0)
+    {
+        for (int i = 0; i < num_bps; i++)
+        {
+            lldb::BreakpointSP break_sp = m_target.GetBreakpointByID(m_thread_observation_bps[i]);
+            if (break_sp)
+            {
+                if (log)
+                    log->Printf("Enabled noticing new thread breakpoint.");
+                break_sp->SetEnabled(true);
+            }
+        }
+    }
+    else 
+    {
+        for (int i = 0; bp_names[i] != NULL; i++)
+        {
+            Breakpoint *breakpoint = m_target.CreateBreakpoint (NULL, bp_names[i], eFunctionNameTypeFull, true).get();
+            if (breakpoint)
+            {
+                if (log)
+                     log->Printf("Successfully created new thread notification breakpoint at \"%s\".", bp_names[i]);
+                m_thread_observation_bps.push_back(breakpoint->GetID());
+                breakpoint->SetCallback (ProcessGDBRemote::NewThreadNotifyBreakpointHit, this, true);
+            }
+            else
+            {
+                if (log)
+                    log->Printf("Failed to create new thread notification breakpoint.");
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool
+ProcessGDBRemote::StopNoticingNewThreads()
+{   
+    size_t num_bps = m_thread_observation_bps.size();
+    if (num_bps != 0)
+    {
+        for (int i = 0; i < num_bps; i++)
+        {
+            LogSP log (lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_STEP));
+            
+            lldb::BreakpointSP break_sp = m_target.GetBreakpointByID(m_thread_observation_bps[i]);
+            if (break_sp)
+            {
+                if (log)
+                    log->Printf ("Disabling new thread notification breakpoint.");
+                break_sp->SetEnabled(false);
+            }
+        }
+    }
+    return true;
+}
+    
+

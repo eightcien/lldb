@@ -46,12 +46,6 @@ public:
     virtual lldb::RegisterContextSP
     GetRegisterContext();
 
-    virtual bool
-    SaveFrameZeroState(RegisterCheckpoint &checkpoint);
-
-    virtual bool
-    RestoreSaveFrameZero(const RegisterCheckpoint &checkpoint);
-
     virtual lldb::RegisterContextSP
     CreateRegisterContextForFrame (lldb_private::StackFrame *frame);
 
@@ -63,6 +57,13 @@ public:
     void BreakNotify();
     void TraceNotify();
     void ExitNotify();
+
+protected:
+    virtual bool
+    SaveFrameZeroState(RegisterCheckpoint &checkpoint);
+
+    virtual bool
+    RestoreSaveFrameZero(const RegisterCheckpoint &checkpoint);
 
 private:
     

@@ -118,8 +118,9 @@ GetCompleteQualType (clang::ASTContext *ast, clang::QualType qual_type)
                         external_ast_source->CompleteType (class_interface_decl);
                         is_forward_decl = class_interface_decl->isForwardDecl();
                     }
+                    return is_forward_decl == false;
                 }
-                return is_forward_decl;
+                return true;
             }
         }
         break;
@@ -1056,7 +1057,7 @@ ClangASTContext::SetHasExternalStorage (clang_type_t clang_type, bool has_extern
             if (cxx_record_decl)
             {
                 cxx_record_decl->setHasExternalLexicalStorage (has_extern);
-                //cxx_record_decl->setHasExternalVisibleStorage (has_extern);
+                cxx_record_decl->setHasExternalVisibleStorage (has_extern);
                 return true;
             }
         }
@@ -1068,7 +1069,7 @@ ClangASTContext::SetHasExternalStorage (clang_type_t clang_type, bool has_extern
             if (enum_decl)
             {
                 enum_decl->setHasExternalLexicalStorage (has_extern);
-                //enum_decl->setHasExternalVisibleStorage (has_extern);
+                enum_decl->setHasExternalVisibleStorage (has_extern);
                 return true;
             }
         }
@@ -1086,7 +1087,7 @@ ClangASTContext::SetHasExternalStorage (clang_type_t clang_type, bool has_extern
                 if (class_interface_decl)
                 {
                     class_interface_decl->setHasExternalLexicalStorage (has_extern);
-                    //class_interface_decl->setHasExternalVisibleStorage (has_extern);
+                    class_interface_decl->setHasExternalVisibleStorage (has_extern);
                     return true;
                 }
             }
@@ -1459,7 +1460,16 @@ ClangASTContext::AddMethodToCXXRecordType
     cxx_method_decl->setParams (params, num_params);
     
     cxx_record_decl->addDecl (cxx_method_decl);
-    
+
+//    printf ("decl->isPolymorphic()             = %i\n", cxx_record_decl->isPolymorphic());
+//    printf ("decl->isAggregate()               = %i\n", cxx_record_decl->isAggregate());
+//    printf ("decl->isPOD()                     = %i\n", cxx_record_decl->isPOD());
+//    printf ("decl->isEmpty()                   = %i\n", cxx_record_decl->isEmpty());
+//    printf ("decl->isAbstract()                = %i\n", cxx_record_decl->isAbstract());
+//    printf ("decl->hasTrivialConstructor()     = %i\n", cxx_record_decl->hasTrivialConstructor());
+//    printf ("decl->hasTrivialCopyConstructor() = %i\n", cxx_record_decl->hasTrivialCopyConstructor());
+//    printf ("decl->hasTrivialCopyAssignment()  = %i\n", cxx_record_decl->hasTrivialCopyAssignment());
+//    printf ("decl->hasTrivialDestructor()      = %i\n", cxx_record_decl->hasTrivialDestructor());
     return cxx_method_decl;
 }
 
@@ -2120,7 +2130,7 @@ ClangASTContext::GetNumChildren (clang::ASTContext *ast, clang_type_t clang_type
     case clang::Type::Complex: return 0;
 
     case clang::Type::Record:
-        if (ClangASTContext::GetCompleteType (ast, clang_type))
+        if (GetCompleteQualType (ast, qual_type))
         {
             const RecordType *record_type = cast<RecordType>(qual_type.getTypePtr());
             const RecordDecl *record_decl = record_type->getDecl();
@@ -2163,6 +2173,7 @@ ClangASTContext::GetNumChildren (clang::ASTContext *ast, clang_type_t clang_type
 
     case clang::Type::ObjCObject:
     case clang::Type::ObjCInterface:
+        if (GetCompleteQualType (ast, qual_type))
         {
             ObjCObjectType *objc_class_type = dyn_cast<ObjCObjectType>(qual_type.getTypePtr());
             assert (objc_class_type);
@@ -2362,7 +2373,8 @@ ClangASTContext::GetChildClangTypeAtIndex
     int32_t &child_byte_offset,
     uint32_t &child_bitfield_bit_size,
     uint32_t &child_bitfield_bit_offset,
-    bool &child_is_base_class
+    bool &child_is_base_class,
+    bool &child_is_deref_of_parent
 )
 {
     if (parent_clang_type)
@@ -2378,7 +2390,8 @@ ClangASTContext::GetChildClangTypeAtIndex
                                          child_byte_offset,
                                          child_bitfield_bit_size,
                                          child_bitfield_bit_offset,
-                                         child_is_base_class);
+                                         child_is_base_class, 
+                                         child_is_deref_of_parent);
     return NULL;
 }
 
@@ -2396,7 +2409,8 @@ ClangASTContext::GetChildClangTypeAtIndex
     int32_t &child_byte_offset,
     uint32_t &child_bitfield_bit_size,
     uint32_t &child_bitfield_bit_offset,
-    bool &child_is_base_class
+    bool &child_is_base_class,
+    bool &child_is_deref_of_parent
 )
 {
     if (parent_clang_type == NULL)
@@ -2427,7 +2441,7 @@ ClangASTContext::GetChildClangTypeAtIndex
             break;
 
         case clang::Type::Record:
-            if (ClangASTContext::GetCompleteType (ast, parent_clang_type))
+            if (GetCompleteQualType (ast, parent_qual_type))
             {
                 const RecordType *record_type = cast<RecordType>(parent_qual_type.getTypePtr());
                 const RecordDecl *record_decl = record_type->getDecl();
@@ -2461,9 +2475,9 @@ ClangASTContext::GetChildClangTypeAtIndex
 
 
                             if (base_class->isVirtual())
-                                bit_offset = record_layout.getVBaseClassOffset(base_class_decl).getQuantity();
+                                bit_offset = record_layout.getVBaseClassOffset(base_class_decl).getQuantity() * 8;
                             else
-                                bit_offset = record_layout.getBaseClassOffset(base_class_decl).getQuantity();
+                                bit_offset = record_layout.getBaseClassOffset(base_class_decl).getQuantity() * 8;
 
                             // Base classes should be a multiple of 8 bits in size
                             assert (bit_offset % 8 == 0);
@@ -2517,6 +2531,7 @@ ClangASTContext::GetChildClangTypeAtIndex
 
         case clang::Type::ObjCObject:
         case clang::Type::ObjCInterface:
+            if (GetCompleteQualType (ast, parent_qual_type))
             {
                 ObjCObjectType *objc_class_type = dyn_cast<ObjCObjectType>(parent_qual_type.getTypePtr());
                 assert (objc_class_type);
@@ -2600,6 +2615,8 @@ ClangASTContext::GetChildClangTypeAtIndex
 
                 if (transparent_pointers && ClangASTContext::IsAggregateType (pointee_type.getAsOpaquePtr()))
                 {
+                    child_is_deref_of_parent = false;
+                    bool tmp_child_is_deref_of_parent = false;
                     return GetChildClangTypeAtIndex (ast,
                                                      parent_name,
                                                      pointer_type->getPointeeType().getAsOpaquePtr(),
@@ -2611,10 +2628,12 @@ ClangASTContext::GetChildClangTypeAtIndex
                                                      child_byte_offset,
                                                      child_bitfield_bit_size,
                                                      child_bitfield_bit_offset,
-                                                     child_is_base_class);
+                                                     child_is_base_class,
+                                                     tmp_child_is_deref_of_parent);
                 }
                 else
                 {
+                    child_is_deref_of_parent = true;
                     if (parent_name)
                     {
                         child_name.assign(1, '*');
@@ -2669,6 +2688,8 @@ ClangASTContext::GetChildClangTypeAtIndex
 
                 if (transparent_pointers && ClangASTContext::IsAggregateType (pointee_type.getAsOpaquePtr()))
                 {
+                    child_is_deref_of_parent = false;
+                    bool tmp_child_is_deref_of_parent = false;
                     return GetChildClangTypeAtIndex (ast,
                                                      parent_name,
                                                      pointer_type->getPointeeType().getAsOpaquePtr(),
@@ -2680,10 +2701,13 @@ ClangASTContext::GetChildClangTypeAtIndex
                                                      child_byte_offset,
                                                      child_bitfield_bit_size,
                                                      child_bitfield_bit_offset,
-                                                     child_is_base_class);
+                                                     child_is_base_class,
+                                                     tmp_child_is_deref_of_parent);
                 }
                 else
                 {
+                    child_is_deref_of_parent = true;
+
                     if (parent_name)
                     {
                         child_name.assign(1, '*');
@@ -2711,6 +2735,8 @@ ClangASTContext::GetChildClangTypeAtIndex
                 clang_type_t pointee_clang_type = pointee_type.getAsOpaquePtr();
                 if (transparent_pointers && ClangASTContext::IsAggregateType (pointee_clang_type))
                 {
+                    child_is_deref_of_parent = false;
+                    bool tmp_child_is_deref_of_parent = false;
                     return GetChildClangTypeAtIndex (ast,
                                                      parent_name,
                                                      pointee_clang_type,
@@ -2722,7 +2748,8 @@ ClangASTContext::GetChildClangTypeAtIndex
                                                      child_byte_offset,
                                                      child_bitfield_bit_size,
                                                      child_bitfield_bit_offset,
-                                                     child_is_base_class);
+                                                     child_is_base_class,
+                                                     tmp_child_is_deref_of_parent);
                 }
                 else
                 {
@@ -2757,7 +2784,8 @@ ClangASTContext::GetChildClangTypeAtIndex
                                              child_byte_offset,
                                              child_bitfield_bit_size,
                                              child_bitfield_bit_offset,
-                                             child_is_base_class);
+                                             child_is_base_class,
+                                             child_is_deref_of_parent);
             break;
 
         default:
@@ -2958,7 +2986,7 @@ ClangASTContext::GetIndexOfChildMemberWithName
         switch (type_class)
         {
         case clang::Type::Record:
-            if (ClangASTContext::GetCompleteType (ast, clang_type))
+            if (GetCompleteQualType (ast, qual_type))
             {
                 const RecordType *record_type = cast<RecordType>(qual_type.getTypePtr());
                 const RecordDecl *record_decl = record_type->getDecl();
@@ -3047,6 +3075,7 @@ ClangASTContext::GetIndexOfChildMemberWithName
 
         case clang::Type::ObjCObject:
         case clang::Type::ObjCInterface:
+            if (GetCompleteQualType (ast, qual_type))
             {
                 StringRef name_sref(name);
                 ObjCObjectType *objc_class_type = dyn_cast<ObjCObjectType>(qual_type.getTypePtr());
@@ -3238,7 +3267,7 @@ ClangASTContext::GetIndexOfChildWithName
         switch (type_class)
         {
         case clang::Type::Record:
-            if (ClangASTContext::GetCompleteType (ast, clang_type))
+            if (GetCompleteQualType (ast, qual_type))
             {
                 const RecordType *record_type = cast<RecordType>(qual_type.getTypePtr());
                 const RecordDecl *record_decl = record_type->getDecl();
@@ -3282,6 +3311,7 @@ ClangASTContext::GetIndexOfChildWithName
 
         case clang::Type::ObjCObject:
         case clang::Type::ObjCInterface:
+            if (GetCompleteQualType (ast, qual_type))
             {
                 StringRef name_sref(name);
                 ObjCObjectType *objc_class_type = dyn_cast<ObjCObjectType>(qual_type.getTypePtr());
@@ -3879,7 +3909,7 @@ ClangASTContext::CreateMemberPointerType (clang_type_t clang_pointee_type, clang
     return NULL;
 }
 
-size_t
+uint32_t
 ClangASTContext::GetPointerBitSize ()
 {
     ASTContext *ast = getASTContext();
@@ -4354,8 +4384,7 @@ ClangASTContext::GetCompleteType (clang::ASTContext *ast, lldb::clang_type_t cla
     if (clang_type == NULL)
         return false;
 
-    clang::QualType qual_type(clang::QualType::getFromOpaquePtr(clang_type));
-    return GetCompleteQualType (ast, qual_type);
+    return GetCompleteQualType (ast, clang::QualType::getFromOpaquePtr(clang_type));
 }
 
 

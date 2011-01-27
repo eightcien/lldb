@@ -127,6 +127,10 @@ public:
     {
     }
     
+    virtual~Instrumenter ()
+    {
+    }
+
     //------------------------------------------------------------------
     /// Inspect a function to find instructions to instrument
     ///
@@ -287,10 +291,14 @@ private:
 class ValidPointerChecker : public Instrumenter
 {
 public:
-    ValidPointerChecker(llvm::Module &module,
-                        DynamicCheckerFunctions &checker_functions) :
+    ValidPointerChecker (llvm::Module &module,
+                         DynamicCheckerFunctions &checker_functions) :
         Instrumenter(module, checker_functions),
         m_valid_pointer_check_func(NULL)
+    {
+    }
+    
+    virtual ~ValidPointerChecker ()
     {
     }
 private:
@@ -356,6 +364,12 @@ public:
         m_objc_object_check_func(NULL)
     {
     }
+    
+    virtual
+    ~ObjcObjectChecker ()
+    {
+    }
+
 private:
     bool InstrumentInstruction(llvm::Instruction *inst)
     {
@@ -487,8 +501,8 @@ IRDynamicChecks::runOnModule(llvm::Module &M)
     
     if (!ooc.Instrument())
         return false;
-    
-    if (log)
+
+    if (log && log->GetVerbose())
     {
         std::string s;
         raw_string_ostream oss(s);
@@ -497,7 +511,7 @@ IRDynamicChecks::runOnModule(llvm::Module &M)
         
         oss.flush();
         
-        log->Printf("Module after dynamic checks: \n%s", s.c_str());
+        log->Printf ("Module after dynamic checks: \n%s", s.c_str());
     }
     
     return true;    

@@ -81,13 +81,17 @@ public:
     // wait indefinitely.
     size_t
     WaitForPacket (StringExtractorGDBRemote &response,
-                   lldb_private::TimeValue* timeout);
+                   const lldb_private::TimeValue* timeout);
 
     char
     GetAck (uint32_t timeout_seconds);
 
     size_t
-    SendAck (char ack_char);
+    SendAck ();
+
+    size_t
+    SendNack ();
+
 
     char
     CalculcateChecksum (const char *payload,
@@ -117,7 +121,8 @@ public:
     bool
     SendInterrupt (lldb_private::Mutex::Locker &locker, 
                    uint32_t seconds_to_wait_for_stop, 
-                   bool *timed_out = NULL);
+                   bool &sent_interrupt, 
+                   bool &timed_out);
 
     bool
     GetSequenceMutex(lldb_private::Mutex::Locker& locker);
@@ -215,9 +220,12 @@ public:
     bool
     IsRunning() const
     {
-        return m_is_running.GetValue();
+        return m_public_is_running.GetValue();
     }
-    
+
+    bool
+    WaitForNotRunning (const lldb_private::TimeValue *timeout_ptr);
+
     bool
     GetHostInfo (uint32_t timeout_seconds);
 
@@ -251,7 +259,10 @@ protected:
 
     size_t
     WaitForPacketNoLock (StringExtractorGDBRemote &response, 
-                         lldb_private::TimeValue* timeout_time_ptr);
+                         const lldb_private::TimeValue* timeout_ptr);
+
+    bool
+    WaitForNotRunningPrivate (const lldb_private::TimeValue *timeout_ptr);
 
     //------------------------------------------------------------------
     // Classes that inherit from GDBRemoteCommunication can see and modify these
@@ -260,7 +271,8 @@ protected:
          m_thread_suffix_supported:1;
     lldb_private::Listener m_rx_packet_listener;
     lldb_private::Mutex m_sequence_mutex;    // Restrict access to sending/receiving packets to a single thread at a time
-    lldb_private::Predicate<bool> m_is_running;
+    lldb_private::Predicate<bool> m_public_is_running;
+    lldb_private::Predicate<bool> m_private_is_running;
 
     // If we need to send a packet while the target is running, the m_async_XXX
     // member variables take care of making this happen.

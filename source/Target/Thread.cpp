@@ -55,7 +55,8 @@ Thread::Thread (Process &process, lldb::tid_t tid) :
     m_resume_signal (LLDB_INVALID_SIGNAL_NUMBER),
     m_resume_state (eStateRunning),
     m_unwinder_ap (),
-    m_destroy_called (false)
+    m_destroy_called (false),
+    m_thread_stop_reason_stop_id (0)
 
 {
     LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
@@ -95,10 +96,47 @@ Thread::GetStopInfo ()
         return GetPrivateStopReason ();
 }
 
+void
+Thread::SetStopInfo (const lldb::StopInfoSP &stop_info_sp)
+{
+    m_actual_stop_info_sp = stop_info_sp;
+    m_thread_stop_reason_stop_id = GetProcess().GetStopID();
+}
+
+void
+Thread::SetStopInfoToNothing()
+{
+    // Note, we can't just NULL out the private reason, or the native thread implementation will try to
+    // go calculate it again.  For now, just set it to a Unix Signal with an invalid signal number.
+    SetStopInfo (StopInfo::CreateStopReasonWithSignal (*this,  LLDB_INVALID_SIGNAL_NUMBER));
+}
+
 bool
 Thread::ThreadStoppedForAReason (void)
 {
     return GetPrivateStopReason () != NULL;
+}
+
+bool
+Thread::CheckpointThreadState (ThreadStateCheckpoint &saved_state)
+{
+    if (!SaveFrameZeroState(saved_state.register_backup))
+        return false;
+
+    saved_state.stop_info_sp = GetStopInfo();
+    saved_state.orig_stop_id = GetProcess().GetStopID();
+
+    return true;
+}
+
+bool
+Thread::RestoreThreadStateFromCheckpoint (ThreadStateCheckpoint &saved_state)
+{
+    RestoreSaveFrameZero(saved_state.register_backup);
+    if (saved_state.stop_info_sp)
+        saved_state.stop_info_sp->MakeStopInfoValid();
+    SetStopInfo(saved_state.stop_info_sp);
+    return true;
 }
 
 StateType
@@ -314,17 +352,35 @@ Vote
 Thread::ShouldReportRun (Event* event_ptr)
 {
     StateType thread_state = GetResumeState ();
+    
     if (thread_state == eStateSuspended
             || thread_state == eStateInvalid)
+    {
         return eVoteNoOpinion;
-
+    }
+    
+    LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_STEP));
     if (m_completed_plan_stack.size() > 0)
     {
         // Don't use GetCompletedPlan here, since that suppresses private plans.
+        if (log)
+            log->Printf ("Current Plan for thread %d (0x%4.4x): %s being asked whether we should report run.", 
+                         GetIndexID(), 
+                         GetID(),
+                         m_completed_plan_stack.back()->GetName());
+                         
         return m_completed_plan_stack.back()->ShouldReportRun (event_ptr);
     }
     else
+    {
+        if (log)
+            log->Printf ("Current Plan for thread %d (0x%4.4x): %s being asked whether we should report run.", 
+                         GetIndexID(), 
+                         GetID(),
+                         GetCurrentPlan()->GetName());
+                         
         return GetCurrentPlan()->ShouldReportRun (event_ptr);
+     }
 }
 
 bool
@@ -624,7 +680,12 @@ Thread::QueueFundamentalPlan (bool abort_other_plans)
 }
 
 ThreadPlan *
-Thread::QueueThreadPlanForStepSingleInstruction (bool step_over, bool abort_other_plans, bool stop_other_threads)
+Thread::QueueThreadPlanForStepSingleInstruction
+(
+    bool step_over, 
+    bool abort_other_plans, 
+    bool stop_other_threads
+)
 {
     ThreadPlanSP thread_plan_sp (new ThreadPlanStepInstruction (*this, step_over, stop_other_threads, eVoteNoOpinion, eVoteNoOpinion));
     QueueThreadPlan (thread_plan_sp, abort_other_plans);
@@ -669,10 +730,24 @@ Thread::QueueThreadPlanForStepOverBreakpointPlan (bool abort_other_plans)
 }
 
 ThreadPlan *
-Thread::QueueThreadPlanForStepOut (bool abort_other_plans, SymbolContext *addr_context, bool first_insn,
-        bool stop_other_threads, Vote stop_vote, Vote run_vote)
+Thread::QueueThreadPlanForStepOut 
+(
+    bool abort_other_plans, 
+    SymbolContext *addr_context, 
+    bool first_insn,
+    bool stop_other_threads, 
+    Vote stop_vote, 
+    Vote run_vote,
+    uint32_t frame_idx
+)
 {
-    ThreadPlanSP thread_plan_sp (new ThreadPlanStepOut (*this, addr_context, first_insn, stop_other_threads, stop_vote, run_vote));
+    ThreadPlanSP thread_plan_sp (new ThreadPlanStepOut (*this, 
+                                                        addr_context, 
+                                                        first_insn, 
+                                                        stop_other_threads, 
+                                                        stop_vote, 
+                                                        run_vote, 
+                                                        frame_idx));
     QueueThreadPlan (thread_plan_sp, abort_other_plans);
     return thread_plan_sp.get();
 }
@@ -724,11 +799,12 @@ Thread::QueueThreadPlanForRunToAddress (bool abort_other_plans,
 
 ThreadPlan *
 Thread::QueueThreadPlanForStepUntil (bool abort_other_plans,
-                                       lldb::addr_t *address_list,
-                                       size_t num_addresses,
-                                       bool stop_other_threads)
+                                     lldb::addr_t *address_list,
+                                     size_t num_addresses,
+                                     bool stop_other_threads,
+                                     uint32_t frame_idx)
 {
-    ThreadPlanSP thread_plan_sp (new ThreadPlanStepUntil (*this, address_list, num_addresses, stop_other_threads));
+    ThreadPlanSP thread_plan_sp (new ThreadPlanStepUntil (*this, address_list, num_addresses, stop_other_threads, frame_idx));
     QueueThreadPlan (thread_plan_sp, abort_other_plans);
     return thread_plan_sp.get();
 
@@ -768,7 +844,7 @@ Thread::DumpThreadPlans (lldb_private::Stream *s) const
 
     stack_size = m_discarded_plan_stack.size();
     s->Printf ("Discarded Plan Stack: %d elements.\n", stack_size);
-    for (int i = stack_size - 1; i >= 0; i--)
+    for (i = stack_size - 1; i >= 0; i--)
     {
         s->Printf ("Element %d: ", i);
         s->IndentMore();

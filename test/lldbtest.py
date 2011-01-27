@@ -106,7 +106,7 @@ import unittest2
 import lldb
 
 # See also dotest.parseOptionsAndInitTestdirs(), where the environment variables
-# LLDB_COMMAND_TRACE and LLDB_NO_CLEANUP are set from '-t' and '-r dir' options.
+# LLDB_COMMAND_TRACE and LLDB_DO_CLEANUP are set from '-t' and '-r dir' options.
 
 # By default, traceAlways is False.
 if "LLDB_COMMAND_TRACE" in os.environ and os.environ["LLDB_COMMAND_TRACE"]=="YES":
@@ -816,7 +816,7 @@ class TestBase(unittest2.TestCase):
 
     def breakAfterLaunch(self, process, func, trace=False):
         """
-        Perform some dancees after LaunchProcess() to break at func name.
+        Perform some dances after Launch() to break at func name.
 
         Return True if we can successfully break at the func name in due time.
         """

@@ -170,12 +170,6 @@ MachProcess::GetThreadAtIndex (nub_size_t thread_idx) const
     return m_thread_list.ThreadIDAtIndex(thread_idx);
 }
 
-uint32_t
-MachProcess::GetThreadIndexFromThreadID (nub_thread_t tid)
-{
-    return m_thread_list.GetThreadIndexByID(tid);
-}
-
 nub_thread_t
 MachProcess::GetCurrentThread ()
 {
@@ -207,12 +201,12 @@ MachProcess::GetThreadInfo(nub_thread_t tid) const
 }
 
 const DNBRegisterSetInfo *
-MachProcess::GetRegisterSetInfo(nub_thread_t tid, nub_size_t *num_reg_sets ) const
+MachProcess::GetRegisterSetInfo (nub_thread_t tid, nub_size_t *num_reg_sets) const
 {
-    MachThread *thread = m_thread_list.GetThreadByID (tid);
-    if (thread)
+    MachThreadSP thread_sp (m_thread_list.GetThreadByID (tid));
+    if (thread_sp)
     {
-        DNBArchProtocol *arch = thread->GetArchProtocol();
+        DNBArchProtocol *arch = thread_sp->GetArchProtocol();
         if (arch)
             return arch->GetRegisterSetInfo (num_reg_sets);
     }
@@ -1497,7 +1491,10 @@ MachProcess::LaunchForDebug
     const char *path,
     char const *argv[],
     char const *envp[],
-    const char *stdio_path,
+    const char *working_directory, // NULL => dont' change, non-NULL => set working directory for inferior to this
+    const char *stdin_path,
+    const char *stdout_path,
+    const char *stderr_path,
     bool no_stdio,
     nub_launch_flavor_t launch_flavor,
     int disable_aslr,
@@ -1523,7 +1520,10 @@ MachProcess::LaunchForDebug
                                                                 DNBArchProtocol::GetArchitecture (),
                                                                 argv, 
                                                                 envp, 
-                                                                stdio_path,
+                                                                working_directory,
+                                                                stdin_path,
+                                                                stdout_path,
+                                                                stderr_path,
                                                                 no_stdio, 
                                                                 this, 
                                                                 disable_aslr, 
@@ -1613,7 +1613,10 @@ MachProcess::PosixSpawnChildForPTraceDebugging
     cpu_type_t cpu_type,
     char const *argv[],
     char const *envp[],
-    const char *stdio_path,
+    const char *working_directory,
+    const char *stdin_path,
+    const char *stdout_path,
+    const char *stderr_path,
     bool no_stdio,
     MachProcess* process,
     int disable_aslr,
@@ -1622,7 +1625,16 @@ MachProcess::PosixSpawnChildForPTraceDebugging
 {
     posix_spawnattr_t attr;
     short flags;
-    DNBLogThreadedIf(LOG_PROCESS, "%s ( path='%s', argv=%p, envp=%p, process )", __FUNCTION__, path, argv, envp);
+    DNBLogThreadedIf(LOG_PROCESS, "%s ( path='%s', argv=%p, envp=%p, working_dir=%s, stdin=%s, stdout=%s stderr=%s, no-stdio=%i)", 
+                     __FUNCTION__, 
+                     path, 
+                     argv, 
+                     envp,
+                     working_directory,
+                     stdin_path,
+                     stdout_path,
+                     stderr_path,
+                     no_stdio);
 
     err.SetError( ::posix_spawnattr_init (&attr), DNBError::POSIX);
     if (err.Fail() || DNBLogCheckLogBit(LOG_PROCESS))
@@ -1671,14 +1683,13 @@ MachProcess::PosixSpawnChildForPTraceDebugging
     pid_t pid = INVALID_NUB_PROCESS;
     if (file_actions_valid)
     {
-        if (stdio_path == NULL && !no_stdio)
+        if (stdin_path == NULL && stdout_path == NULL && stderr_path == NULL && !no_stdio)
         {
             pty_error = pty.OpenFirstAvailableMaster(O_RDWR|O_NOCTTY);
             if (pty_error == PseudoTerminal::success)
-                stdio_path = pty.SlaveName();
-            // Make sure we were able to get the slave name
-            if (stdio_path == NULL)
-                stdio_path = "/dev/null";
+            {
+                stdin_path = stdout_path = stderr_path = pty.SlaveName();
+            }
         }
 
 		// if no_stdio, then do open file actions, opening /dev/null.
@@ -1699,11 +1710,11 @@ MachProcess::PosixSpawnChildForPTraceDebugging
             if (err.Fail() || DNBLogCheckLogBit (LOG_PROCESS))
                 err.LogThreaded ("::posix_spawn_file_actions_addopen (&file_actions, filedes=STDERR_FILENO, path=/dev/null)");
         }
-        else if (stdio_path != NULL)
+        else
         {
-            int slave_fd_err = open (stdio_path, O_RDWR, 0);
-            int slave_fd_in = open (stdio_path, O_RDONLY, 0);
-            int slave_fd_out = open (stdio_path, O_WRONLY, 0);
+            int slave_fd_err = open (stderr_path ? stderr_path : "/dev/null", O_NOCTTY | O_CREAT | O_RDWR   , 0640);
+            int slave_fd_in  = open (stdin_path  ? stdin_path  : "/dev/null", O_NOCTTY | O_RDONLY);
+            int slave_fd_out = open (stdout_path ? stdout_path : "/dev/null", O_NOCTTY | O_CREAT | O_WRONLY , 0640);
 
             err.SetError( ::posix_spawn_file_actions_adddup2(&file_actions, slave_fd_err, STDERR_FILENO), DNBError::POSIX);
             if (err.Fail() || DNBLogCheckLogBit(LOG_PROCESS))
@@ -1717,12 +1728,23 @@ MachProcess::PosixSpawnChildForPTraceDebugging
             if (err.Fail() || DNBLogCheckLogBit(LOG_PROCESS))
                 err.LogThreaded("::posix_spawn_file_actions_adddup2 ( &file_actions, filedes = %d, newfiledes = STDOUT_FILENO )", slave_fd_out);
         }
+
+        // TODO: Verify if we can set the working directory back immediately
+        // after the posix_spawnp call without creating a race condition???
+        if (working_directory)
+            ::chdir (working_directory);
+        
         err.SetError( ::posix_spawnp (&pid, path, &file_actions, &attr, (char * const*)argv, (char * const*)envp), DNBError::POSIX);
         if (err.Fail() || DNBLogCheckLogBit(LOG_PROCESS))
             err.LogThreaded("::posix_spawnp ( pid => %i, path = '%s', file_actions = %p, attr = %p, argv = %p, envp = %p )", pid, path, &file_actions, &attr, argv, envp);
     }
     else
     {
+        // TODO: Verify if we can set the working directory back immediately
+        // after the posix_spawnp call without creating a race condition???
+        if (working_directory)
+            ::chdir (working_directory);
+        
         err.SetError( ::posix_spawnp (&pid, path, NULL, &attr, (char * const*)argv, (char * const*)envp), DNBError::POSIX);
         if (err.Fail() || DNBLogCheckLogBit(LOG_PROCESS))
             err.LogThreaded("::posix_spawnp ( pid => %i, path = '%s', file_actions = %p, attr = %p, argv = %p, envp = %p )", pid, path, NULL, &attr, argv, envp);

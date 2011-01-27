@@ -326,8 +326,11 @@ Target::RemoveBreakpointByID (break_id_t break_id)
             m_internal_breakpoint_list.Remove(break_id, false);
         else
         {
-            if (m_last_created_breakpoint->GetID() == break_id)
-                m_last_created_breakpoint.reset();
+            if (m_last_created_breakpoint)
+            {
+                if (m_last_created_breakpoint->GetID() == break_id)
+                    m_last_created_breakpoint.reset();
+            }
             m_breakpoint_list.Remove(break_id, true);
         }
         return true;
@@ -923,8 +926,9 @@ Target::EvaluateExpression
     {
         frame->CalculateExecutionContext(exe_ctx);
         Error error;
-        const bool check_ptr_vs_member = true;
-        result_valobj_sp = frame->GetValueForVariableExpressionPath (expr_cstr, check_ptr_vs_member, error);
+        const uint32_t expr_path_options = StackFrame::eExpressionPathOptionCheckPtrVsMember |
+                                           StackFrame::eExpressionPathOptionsNoFragileObjcIvar;
+        result_valobj_sp = frame->GetValueForVariableExpressionPath (expr_cstr, expr_path_options, error);
     }
     else if (m_process_sp)
     {

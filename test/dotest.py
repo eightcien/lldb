@@ -121,6 +121,8 @@ def usage():
 Usage: dotest.py [option] [args]
 where options:
 -h   : print this help message and exit (also --help)
+-A   : specify the architecture to launch for the inferior process
+-C   : specify the compiler used to build the inferior executable
 -a   : don't do lldb Python API tests
        use @python_api_test to decorate a test case as lldb Python API test
 +a   : just do lldb Python API tests
@@ -276,6 +278,20 @@ def parseOptionsAndInitTestdirs():
 
         if sys.argv[index].find('-h') != -1:
             usage()
+        elif sys.argv[index].startswith('-A'):
+            # Increment by 1 to fetch the ARCH spec.
+            index += 1
+            if index >= len(sys.argv) or sys.argv[index].startswith('-'):
+                usage()
+            os.environ["ARCH"] = sys.argv[index]
+            index += 1
+        elif sys.argv[index].startswith('-C'):
+            # Increment by 1 to fetch the CC spec.
+            index += 1
+            if index >= len(sys.argv) or sys.argv[index].startswith('-'):
+                usage()
+            os.environ["CC"] = sys.argv[index]
+            index += 1
         elif sys.argv[index].startswith('-a'):
             dont_do_python_api_test = True
             index += 1
@@ -439,7 +455,10 @@ def setupSysPath():
     global testdirs
 
     # Get the directory containing the current script.
-    scriptPath = sys.path[0]
+    if "DOTEST_PROFILE" in os.environ and "DOTEST_SCRIPT_DIR" in os.environ:
+        scriptPath = os.environ["DOTEST_SCRIPT_DIR"]
+    else:
+        scriptPath = sys.path[0]
     if not scriptPath.endswith('test'):
         print "This script expects to reside in lldb's test directory."
         sys.exit(-1)
@@ -604,6 +623,12 @@ def lldbLoggings():
         if not res.Succeeded():
             raise Exception('log enable failed (check GDB_REMOTE_LOG env variable.')
 
+def getMyCommandLine():
+    import subprocess
+    ps = subprocess.Popen(['ps', '-o', "command=CMD", str(os.getpid())], stdout=subprocess.PIPE).communicate()[0]
+    lines = ps.split('\n')
+    cmd_line = lines[1]
+    return cmd_line
 
 # ======================================== #
 #                                          #
@@ -676,7 +701,9 @@ if not sdir_name:
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H_%M_%S")
     sdir_name = timestamp
 os.environ["LLDB_SESSION_DIRNAME"] = sdir_name
+
 sys.stderr.write("\nSession logs for test failures/errors will go into directory '%s'\n" % sdir_name)
+sys.stderr.write("Command invoked: %s\n" % getMyCommandLine())
 
 #
 # Invoke the default TextTestRunner to run the test suite, possibly iterating

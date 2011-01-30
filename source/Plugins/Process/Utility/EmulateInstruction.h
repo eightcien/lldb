@@ -24,7 +24,7 @@ public:
         eContextImmediate,
         eContextPushRegisterOnStack,
         eContextAdjustStackPointer,
-        eContextRegisterPlusOffset,
+        eContextRegisterPlusOffset
     };
     
     struct Context
@@ -54,7 +54,7 @@ public:
         eOpcode16,
         eOpcode32,
         eOpcode64,
-        eOpcodeBytes,
+        eOpcodeBytes
     };
 
     struct Instruction

@@ -26,6 +26,7 @@
 #include <mach-o/dyld.h>
 #include <sys/sysctl.h>
 #elif defined (__linux__)
+#include "llvm/Support/ELF.h"
 #include <sys/wait.h>
 #endif
 
@@ -246,7 +247,8 @@ Host::GetArchitecture ()
             }
         }
 #elif defined (__linux__)
-        g_host_arch.SetArch(7u, 144u);
+        // FIXME: Set according to the host triple.
+        g_host_arch.SetElfArch(llvm::ELF::EM_X86_64, 0);
 #endif
     }
     return g_host_arch;

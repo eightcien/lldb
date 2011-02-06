@@ -25,6 +25,8 @@
 #include <libproc.h>
 #include <mach-o/dyld.h>
 #include <sys/sysctl.h>
+#elif defined (__linux__)
+#include <sys/wait.h>
 #endif
 
 using namespace lldb;
@@ -649,7 +651,8 @@ Host::DynamicLibraryOpen (const FileSpec &file_spec, Error &error)
     char path[PATH_MAX];
     if (file_spec.GetPath(path, sizeof(path)))
     {
-        dynamic_library_handle = ::dlopen (path, RTLD_LAZY | RTLD_GLOBAL | RTLD_FIRST);
+        dynamic_library_handle = ::dlopen (path, RTLD_LAZY | RTLD_GLOBAL);
+
         if (dynamic_library_handle)
         {
             error.Clear();

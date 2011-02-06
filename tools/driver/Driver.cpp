@@ -822,6 +822,7 @@ Driver::HandleProcessEvent (const SBEvent &event)
         {
         case eStateInvalid:
         case eStateUnloaded:
+        case eStateConnected:
         case eStateAttaching:
         case eStateLaunching:
         case eStateStepping:
@@ -934,7 +935,7 @@ Driver::HandleIOEvent (const SBEvent &event)
 //{
 //    std::string path;
 //    VMRange text_range;
-//    UUID uuid;
+//    lldb_private::UUID uuid;
 //};
 //
 //void
@@ -1431,7 +1432,7 @@ sigint_handler (int signo)
 }
 
 int
-main (int argc, char const *argv[])
+main (int argc, char const *argv[], const char *envp[])
 {
     SBDebugger::Initialize();
     

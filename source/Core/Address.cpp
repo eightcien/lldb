@@ -171,7 +171,7 @@ ReadCStringFromMemory (ExecutionContextScope *exe_scope, const Address &address,
     buf[k_buf_len] = '\0'; // NULL terminate
 
     // Byte order and address size don't matter for C string dumping..
-    DataExtractor data (buf, sizeof(buf), eByteOrderHost, 4);
+    DataExtractor data (buf, sizeof(buf), lldb::endian::InlHostByteOrder(), 4);
     size_t total_len = 0;
     size_t bytes_read;
     Address curr_address(address);
@@ -576,7 +576,7 @@ Address::Dump (Stream *s, ExecutionContextScope *exe_scope, DumpStyle style, Dum
                         bool show_stop_context = true;
                         const bool show_module = (style == DumpStyleResolvedDescription);
                         const bool show_fullpaths = false; 
-                        const bool show_inlined_frames = false;
+                        const bool show_inlined_frames = true;
                         if (sc.function == NULL && sc.symbol != NULL)
                         {
                             // If we have just a symbol make sure it is in the right section

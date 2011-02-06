@@ -61,7 +61,7 @@ public:
 
     const char *
     GetFilePathname ();
-    
+
     void
     SetLineBuffered();
 

@@ -19,6 +19,7 @@
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "./CommandObjectThread.h"
+#include "lldb/Host/Host.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
@@ -167,10 +168,14 @@ public:
         Process *process = m_interpreter.GetDebugger().GetExecutionContext().process;
         if (process && process->IsAlive())
         {        
-            if (!m_interpreter.Confirm ("There is a running process, kill it and restart?", true))
+            char message[1024];
+            if (process->GetState() == eStateAttaching)
+                ::strncpy (message, "There is a pending attach, abort it and launch a new process?", sizeof(message));
+            else
+                ::strncpy (message, "There is a running process, kill it and restart?", sizeof(message));
+    
+            if (!m_interpreter.Confirm (message, true))
             {
-                result.AppendErrorWithFormat ("Process %u is currently being debugged, restart cancelled.\n",
-                                              process->GetID());
                 result.SetStatus (eReturnStatusFailed);
                 return false;
             }
@@ -536,7 +541,8 @@ public:
              CommandReturnObject &result)
     {
         Target *target = m_interpreter.GetDebugger().GetSelectedTarget().get();
-
+        bool synchronous_execution = m_interpreter.GetSynchronous ();
+        
         Process *process = m_interpreter.GetDebugger().GetExecutionContext().process;
         if (process)
         {
@@ -566,7 +572,7 @@ public:
             target = new_target_sp.get();
             if (target == NULL || error.Fail())
             {
-                result.AppendError(error.AsCString("Error creating empty target"));
+                result.AppendError(error.AsCString("Error creating target"));
                 return false;
             }
             m_interpreter.GetDebugger().GetTargetList().SetSelectedTarget(target);
@@ -622,7 +628,7 @@ public:
                         return false;
                     }
 
-                    m_interpreter.GetDebugger().GetOutputStream().Printf("Waiting to attach to a process named \"%s\".\n", wait_name);
+                    result.AppendMessageWithFormat("Waiting to attach to a process named \"%s\".\n", wait_name);
                     error = process->Attach (wait_name, m_options.waitfor);
                     if (error.Success())
                     {
@@ -635,6 +641,23 @@ public:
                                                          error.AsCString());
                         result.SetStatus (eReturnStatusFailed);
                         return false;                
+                    }
+                    // If we're synchronous, wait for the stopped event and report that.
+                    // Otherwise just return.  
+                    // FIXME: in the async case it will now be possible to get to the command
+                    // interpreter with a state eStateAttaching.  Make sure we handle that correctly.
+                    if (synchronous_execution)
+                    {
+                        StateType state = process->WaitForProcessToStop (NULL);
+
+                        result.SetDidChangeProcessState (true);
+                        result.AppendMessageWithFormat ("Process %i %s\n", process->GetID(), StateAsCString (state));
+                        result.SetStatus (eReturnStatusSuccessFinishNoResult);
+                    }
+                    else
+                    {
+                        result.SetDidChangeProcessState (true);
+                        result.SetStatus (eReturnStatusSuccessFinishNoResult);
                     }
                 }
                 else
@@ -681,6 +704,20 @@ public:
                                                          error.AsCString());
                             result.SetStatus (eReturnStatusFailed);
                         }
+                        // See comment for synchronous_execution above.
+                        if (synchronous_execution)
+                        {
+                            StateType state = process->WaitForProcessToStop (NULL);
+
+                            result.SetDidChangeProcessState (true);
+                            result.AppendMessageWithFormat ("Process %i %s\n", process->GetID(), StateAsCString (state));
+                            result.SetStatus (eReturnStatusSuccessFinishNoResult);
+                        }
+                        else
+                        {
+                            result.SetDidChangeProcessState (true);
+                            result.SetStatus (eReturnStatusSuccessFinishNoResult);
+                        }
                     }
                     else
                     {
@@ -697,18 +734,20 @@ public:
         if (result.Succeeded())
         {
             // Okay, we're done.  Last step is to warn if the executable module has changed:
+            char new_path[PATH_MAX];
             if (!old_exec_module_sp)
             {
-                char new_path[PATH_MAX + 1];
-                target->GetExecutableModule()->GetFileSpec().GetPath(new_path, PATH_MAX);
-                
-                result.AppendMessageWithFormat("Executable module set to \"%s\".\n",
-                    new_path);
+                // We might not have a module if we attached to a raw pid...
+                ModuleSP new_module_sp (target->GetExecutableModule());
+                if (new_module_sp)
+                {
+                    new_module_sp->GetFileSpec().GetPath(new_path, PATH_MAX);
+                    result.AppendMessageWithFormat("Executable module set to \"%s\".\n", new_path);
+                }
             }
             else if (old_exec_module_sp->GetFileSpec() != target->GetExecutableModule()->GetFileSpec())
             {
-                char old_path[PATH_MAX + 1];
-                char new_path[PATH_MAX + 1];
+                char old_path[PATH_MAX];
                 
                 old_exec_module_sp->GetFileSpec().GetPath(old_path, PATH_MAX);
                 target->GetExecutableModule()->GetFileSpec().GetPath (new_path, PATH_MAX);
@@ -888,6 +927,182 @@ public:
         }
         return result.Succeeded();
     }
+};
+
+//-------------------------------------------------------------------------
+// CommandObjectProcessConnect
+//-------------------------------------------------------------------------
+#pragma mark CommandObjectProcessConnect
+
+class CommandObjectProcessConnect : public CommandObject
+{
+public:
+    
+    class CommandOptions : public Options
+    {
+    public:
+        
+        CommandOptions () :
+        Options()
+        {
+            // Keep default values of all options in one place: ResetOptionValues ()
+            ResetOptionValues ();
+        }
+        
+        ~CommandOptions ()
+        {
+        }
+        
+        Error
+        SetOptionValue (int option_idx, const char *option_arg)
+        {
+            Error error;
+            char short_option = (char) m_getopt_table[option_idx].val;
+            
+            switch (short_option)
+            {
+            case 'p':   
+                plugin_name.assign (option_arg);    
+                break;
+
+            default:
+                error.SetErrorStringWithFormat("Invalid short option character '%c'.\n", short_option);
+                break;
+            }
+            return error;
+        }
+        
+        void
+        ResetOptionValues ()
+        {
+            Options::ResetOptionValues();
+            plugin_name.clear();
+        }
+        
+        const lldb::OptionDefinition*
+        GetDefinitions ()
+        {
+            return g_option_table;
+        }
+        
+        // Options table: Required for subclasses of Options.
+        
+        static lldb::OptionDefinition g_option_table[];
+        
+        // Instance variables to hold the values for command options.
+        
+        std::string plugin_name;        
+    };
+
+    CommandObjectProcessConnect (CommandInterpreter &interpreter) :
+    CommandObject (interpreter,
+                   "process connect",
+                   "Connect to a remote debug service.",
+                   "process connect <remote-url>",
+                   0)
+    {
+    }
+    
+    ~CommandObjectProcessConnect ()
+    {
+    }
+
+    
+    bool
+    Execute (Args& command,
+             CommandReturnObject &result)
+    {
+        
+        TargetSP target_sp (m_interpreter.GetDebugger().GetSelectedTarget());
+        Error error;        
+        Process *process = m_interpreter.GetDebugger().GetExecutionContext().process;
+        if (process)
+        {
+            if (process->IsAlive())
+            {
+                result.AppendErrorWithFormat ("Process %u is currently being debugged, kill the process before connecting.\n", 
+                                              process->GetID());
+                result.SetStatus (eReturnStatusFailed);
+                return false;
+            }
+        }
+        
+        if (!target_sp)
+        {
+            // If there isn't a current target create one.
+            FileSpec emptyFileSpec;
+            ArchSpec emptyArchSpec;
+            
+            error = m_interpreter.GetDebugger().GetTargetList().CreateTarget (m_interpreter.GetDebugger(), 
+                                                                              emptyFileSpec,
+                                                                              emptyArchSpec, 
+                                                                              NULL, 
+                                                                              false,
+                                                                              target_sp);
+            if (!target_sp || error.Fail())
+            {
+                result.AppendError(error.AsCString("Error creating target"));
+                result.SetStatus (eReturnStatusFailed);
+                return false;
+            }
+            m_interpreter.GetDebugger().GetTargetList().SetSelectedTarget(target_sp.get());
+        }
+        
+        if (command.GetArgumentCount() == 1)
+        {
+            const char *plugin_name = NULL;
+            if (!m_options.plugin_name.empty())
+                plugin_name = m_options.plugin_name.c_str();
+
+            const char *remote_url = command.GetArgumentAtIndex(0);
+            process = target_sp->CreateProcess (m_interpreter.GetDebugger().GetListener(), plugin_name).get();
+            
+            if (process)
+            {
+                error = process->ConnectRemote (remote_url);
+
+                if (error.Fail())
+                {
+                    result.AppendError(error.AsCString("Remote connect failed"));
+                    result.SetStatus (eReturnStatusFailed);
+                    return false;
+                }
+            }
+            else
+            {
+                result.AppendErrorWithFormat ("Unable to find process plug-in for remote URL '%s'.\nPlease specify a process plug-in name with the --plugin option, or specify an object file using the \"file\" command: \n", 
+                                              m_cmd_name.c_str(),
+                                              m_cmd_syntax.c_str());
+                result.SetStatus (eReturnStatusFailed);
+            }
+        }
+        else
+        {
+            result.AppendErrorWithFormat ("'%s' takes exactly one argument:\nUsage: \n", 
+                                          m_cmd_name.c_str(),
+                                          m_cmd_syntax.c_str());
+            result.SetStatus (eReturnStatusFailed);
+        }
+        return result.Succeeded();
+    }
+
+    Options *
+    GetOptions ()
+    {
+        return &m_options;
+    }
+    
+protected:
+    
+    CommandOptions m_options;
+};
+
+
+lldb::OptionDefinition
+CommandObjectProcessConnect::CommandOptions::g_option_table[] =
+{
+    { LLDB_OPT_SET_ALL, false, "plugin", 'p', required_argument, NULL, 0, eArgTypePlugin, "Name of the process plugin you want to use."},
+    { 0,                false, NULL,      0 , 0,                 NULL, 0, eArgTypeNone,   NULL }
 };
 
 //-------------------------------------------------------------------------
@@ -1617,6 +1832,7 @@ CommandObjectMultiwordProcess::CommandObjectMultiwordProcess (CommandInterpreter
     LoadSubCommand ("attach",      CommandObjectSP (new CommandObjectProcessAttach (interpreter)));
     LoadSubCommand ("launch",      CommandObjectSP (new CommandObjectProcessLaunch (interpreter)));
     LoadSubCommand ("continue",    CommandObjectSP (new CommandObjectProcessContinue (interpreter)));
+    LoadSubCommand ("connect",     CommandObjectSP (new CommandObjectProcessConnect (interpreter)));
     LoadSubCommand ("detach",      CommandObjectSP (new CommandObjectProcessDetach (interpreter)));
     LoadSubCommand ("load",        CommandObjectSP (new CommandObjectProcessLoad (interpreter)));
     LoadSubCommand ("unload",      CommandObjectSP (new CommandObjectProcessUnload (interpreter)));

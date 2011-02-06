@@ -17,7 +17,6 @@
 #include "lldb/Breakpoint/BreakpointResolverAddress.h"
 #include "lldb/Breakpoint/BreakpointResolverFileLine.h"
 #include "lldb/Breakpoint/BreakpointResolverName.h"
-#include "lldb/Core/DataBufferMemoryMap.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Event.h"
 #include "lldb/Core/Log.h"
@@ -701,7 +700,7 @@ Target::GetSharedModule
 (
     const FileSpec& file_spec,
     const ArchSpec& arch,
-    const UUID *uuid_ptr,
+    const lldb_private::UUID *uuid_ptr,
     const ConstString *object_name,
     off_t object_offset,
     Error *error_ptr
@@ -1174,18 +1173,17 @@ TargetInstanceSettings::UpdateInstanceSettingsVariable (const ConstString &var_n
                     return;
                 }
                 
-                DataBufferMemoryMap buf;
+                DataBufferSP data_sp (file_spec.ReadFileContents());
                 
-                if (!buf.MemoryMapFromFileSpec(&file_spec) &&
-                    buf.GetError().Fail())
+                if (!data_sp && data_sp->GetByteSize() == 0)
                 {
                     err.SetErrorToGenericError ();
-                    err.SetErrorStringWithFormat ("Couldn't read from %s: %s\n", value, buf.GetError().AsCString());
+                    err.SetErrorStringWithFormat ("Couldn't read from %s\n", value);
                     return;
                 }
                 
                 m_expr_prefix_path = value;
-                m_expr_prefix_contents.assign(reinterpret_cast<const char *>(buf.GetBytes()), buf.GetByteSize());
+                m_expr_prefix_contents.assign(reinterpret_cast<const char *>(data_sp->GetBytes()), data_sp->GetByteSize());
             }
             return;
         case lldb::eVarSetOperationAppend:

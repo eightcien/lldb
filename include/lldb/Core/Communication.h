@@ -19,9 +19,7 @@
 #include "lldb/lldb-private.h"
 #include "lldb/Core/Broadcaster.h"
 #include "lldb/Core/Error.h"
-#include "lldb/Host/Host.h"
 #include "lldb/Host/Mutex.h"
-#include "lldb/Host/Predicate.h"
 #include "lldb/lldb-private.h"
 
 namespace lldb_private {
@@ -358,7 +356,8 @@ protected:
     lldb::thread_t m_read_thread; ///< The read thread handle in case we need to cancel the thread.
     bool m_read_thread_enabled;
     std::string m_bytes;    ///< A buffer to cache bytes read in the ReadThread function.
-    Mutex m_bytes_mutex; ///< A mutex to protect multi-threaded access to the cached bytes.
+    Mutex m_bytes_mutex;    ///< A mutex to protect multi-threaded access to the cached bytes.
+    Mutex m_write_mutex;    ///< Don't let multiple threads write at the same time...
     ReadThreadBytesReceived m_callback;
     void *m_callback_baton;
     bool m_close_on_eof;

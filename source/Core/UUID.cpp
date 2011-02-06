@@ -18,11 +18,11 @@
 // Project includes
 #include "lldb/Core/Stream.h"
 
-using namespace lldb_private;
+namespace lldb_private {
 
 UUID::UUID()
 {
-    ::bzero (m_uuid, sizeof(m_uuid));
+    ::memset (m_uuid, 0, sizeof(m_uuid));
 }
 
 UUID::UUID(const UUID& rhs)
@@ -35,7 +35,7 @@ UUID::UUID (const void *uuid_bytes, uint32_t num_uuid_bytes)
     if (uuid_bytes && num_uuid_bytes >= 16)
         ::memcpy (m_uuid, uuid_bytes, sizeof (m_uuid));
     else
-        ::bzero (m_uuid, sizeof(m_uuid));
+        ::memset (m_uuid, 0, sizeof(m_uuid));
 }
 
 const UUID&
@@ -53,7 +53,7 @@ UUID::~UUID()
 void
 UUID::Clear()
 {
-    ::bzero (m_uuid, sizeof(m_uuid));
+    ::memset (m_uuid, 0, sizeof(m_uuid));
 }
 
 const void *
@@ -85,7 +85,7 @@ UUID::SetBytes (const void *uuid_bytes)
     if (uuid_bytes)
         ::memcpy (m_uuid, uuid_bytes, sizeof (m_uuid));
     else
-        ::bzero (m_uuid, sizeof(m_uuid));
+        ::memset (m_uuid, 0, sizeof(m_uuid));
 }
 
 size_t
@@ -175,40 +175,40 @@ UUID::SetfromCString (const char *cstr)
     return 0;
 }
 
-
-
-bool
-lldb_private::operator == (const UUID &lhs, const UUID &rhs)
-{
-    return ::memcmp (lhs.GetBytes(), rhs.GetBytes(), UUID::GetByteSize()) == 0;
 }
 
 bool
-lldb_private::operator != (const UUID &lhs, const UUID &rhs)
+lldb_private::operator == (const lldb_private::UUID &lhs, const lldb_private::UUID &rhs)
 {
-    return ::memcmp (lhs.GetBytes(), rhs.GetBytes(), UUID::GetByteSize()) != 0;
+    return ::memcmp (lhs.GetBytes(), rhs.GetBytes(), lldb_private::UUID::GetByteSize()) == 0;
 }
 
 bool
-lldb_private::operator <  (const UUID &lhs, const UUID &rhs)
+lldb_private::operator != (const lldb_private::UUID &lhs, const lldb_private::UUID &rhs)
 {
-    return ::memcmp (lhs.GetBytes(), rhs.GetBytes(), UUID::GetByteSize()) <  0;
+    return ::memcmp (lhs.GetBytes(), rhs.GetBytes(), lldb_private::UUID::GetByteSize()) != 0;
 }
 
 bool
-lldb_private::operator <= (const UUID &lhs, const UUID &rhs)
+lldb_private::operator <  (const lldb_private::UUID &lhs, const lldb_private::UUID &rhs)
 {
-    return ::memcmp (lhs.GetBytes(), rhs.GetBytes(), UUID::GetByteSize()) <= 0;
+    return ::memcmp (lhs.GetBytes(), rhs.GetBytes(), lldb_private::UUID::GetByteSize()) <  0;
 }
 
 bool
-lldb_private::operator >  (const UUID &lhs, const UUID &rhs)
+lldb_private::operator <= (const lldb_private::UUID &lhs, const lldb_private::UUID &rhs)
 {
-    return ::memcmp (lhs.GetBytes(), rhs.GetBytes(), UUID::GetByteSize()) >  0;
+    return ::memcmp (lhs.GetBytes(), rhs.GetBytes(), lldb_private::UUID::GetByteSize()) <= 0;
 }
 
 bool
-lldb_private::operator >= (const UUID &lhs, const UUID &rhs)
+lldb_private::operator >  (const lldb_private::UUID &lhs, const lldb_private::UUID &rhs)
 {
-    return ::memcmp (lhs.GetBytes(), rhs.GetBytes(), UUID::GetByteSize()) >= 0;
+    return ::memcmp (lhs.GetBytes(), rhs.GetBytes(), lldb_private::UUID::GetByteSize()) >  0;
+}
+
+bool
+lldb_private::operator >= (const lldb_private::UUID &lhs, const lldb_private::UUID &rhs)
+{
+    return ::memcmp (lhs.GetBytes(), rhs.GetBytes(), lldb_private::UUID::GetByteSize()) >= 0;
 }

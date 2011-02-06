@@ -21,8 +21,10 @@
 #include "lldb/Core/Log.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/ValueObjectConstResult.h"
+#include "lldb/Expression/ASTDumper.h"
 #include "lldb/Expression/ClangASTSource.h"
 #include "lldb/Expression/ClangPersistentVariables.h"
+#include "lldb/Host/Endian.h"
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/ClangNamespaceDecl.h"
 #include "lldb/Symbol/CompileUnit.h"
@@ -429,8 +431,9 @@ ClangExpressionDeclMap::GetFunctionAddress
         return false;
 
     SymbolContextList sc_list;
-    
-    m_parser_vars->m_sym_ctx.FindFunctionsByName(name, false, sc_list);
+    const bool include_symbols = true;
+    const bool append = false;
+    m_parser_vars->m_sym_ctx.FindFunctionsByName(name, include_symbols, append, sc_list);
     
     if (!sc_list.GetSize())
         return false;
@@ -860,13 +863,13 @@ static bool WriteAddressInto
         case 4:
         {
             uint32_t address32 = address & 0xffffffffll;
-            str.PutRawBytes(&address32, sizeof(address32), eByteOrderHost, eByteOrderInvalid);
+            str.PutRawBytes(&address32, sizeof(address32), endian::InlHostByteOrder(), eByteOrderInvalid);
         }
         break;
         case 8:
         {
             uint64_t address64 = address;
-            str.PutRawBytes(&address64, sizeof(address64), eByteOrderHost, eByteOrderInvalid);
+            str.PutRawBytes(&address64, sizeof(address64), endian::InlHostByteOrder(), eByteOrderInvalid);
         }
         break;
     }
@@ -1557,7 +1560,12 @@ ClangExpressionDeclMap::GetDecls (NameSearchContext &context, const ConstString 
         }
         else
         {
-            m_parser_vars->m_sym_ctx.FindFunctionsByName (name, false, sc_list);
+            const bool include_symbols = true;
+            const bool append = false;
+            m_parser_vars->m_sym_ctx.FindFunctionsByName (name, 
+                                                          include_symbols, 
+                                                          append, 
+                                                          sc_list);
         
             bool found_specific = false;
             Symbol *generic_symbol = NULL;
@@ -1590,9 +1598,9 @@ ClangExpressionDeclMap::GetDecls (NameSearchContext &context, const ConstString 
             if (!found_specific)
             {
                 if (generic_symbol)
-                    AddOneFunction(context, NULL, generic_symbol);
+                    AddOneFunction (context, NULL, generic_symbol);
                 else if (non_extern_symbol)
-                    AddOneFunction(context, NULL, non_extern_symbol);
+                    AddOneFunction (context, NULL, non_extern_symbol);
             }
 
             ClangNamespaceDecl namespace_decl (m_parser_vars->m_sym_ctx.FindNamespace(name));
@@ -1897,6 +1905,13 @@ ClangExpressionDeclMap::AddOneVariable (NameSearchContext &context, Variable* va
         var_decl_print_stream.flush();
         
         log->Printf("Found variable %s, returned %s", decl_name.c_str(), var_decl_print_string.c_str());
+
+        if (log->GetVerbose())
+        {
+            StreamString var_decl_dump_string;
+            ASTDumper::DumpDecl(var_decl_dump_string, var_decl);
+            log->Printf("%s\n", var_decl_dump_string.GetData());
+        }
     }
 }
 

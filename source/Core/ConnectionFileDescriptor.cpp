@@ -155,13 +155,9 @@ ConnectionFileDescriptor::Read (void *dst, size_t dst_len, ConnectionStatus &sta
     Error error;
     ssize_t bytes_read = ::read (m_fd, dst, dst_len);
     if (bytes_read == 0)
-//        Disable the end-of-file special handling stuff for now.  Hopefully re-instate it (properly fixed) at a 
-//        later date:
     {
-//        error.Clear(); // End-of-file.  Do not automatically close; pass along for the end-of-file handlers.
-//        status = eConnectionStatusEndOfFile;
-        error.SetErrorStringWithFormat("End-of-file.\n");
-        status = eConnectionStatusLostConnection;
+        error.Clear(); // End-of-file.  Do not automatically close; pass along for the end-of-file handlers.
+        status = eConnectionStatusEndOfFile;
     }
     else if (bytes_read < 0)
     {
@@ -575,7 +571,7 @@ ConnectionFileDescriptor::SocketConnect (const char *host_and_port, Error *error
     SetSocketOption (m_fd, SOL_SOCKET, SO_REUSEADDR, 1);
 
     struct sockaddr_in sa;
-    ::bzero (&sa, sizeof (sa));
+    ::memset (&sa, 0, sizeof (sa));
     sa.sin_family = AF_INET;
     sa.sin_port = htons (port);
 

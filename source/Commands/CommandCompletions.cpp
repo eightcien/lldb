@@ -11,21 +11,20 @@
 // C Includes
 #include <sys/stat.h>
 #include <dirent.h>
-#include <libgen.h>
-#include <glob.h>
+#if defined(__APPLE__) || defined(__linux__)
 #include <pwd.h>
-#include <sys/types.h>
+#endif
 
 // C++ Includes
 // Other libraries and framework includes
 // Project includes
-#include "lldb/Interpreter/Args.h"
-#include "lldb/Interpreter/CommandInterpreter.h"
-#include "lldb/Core/FileSpecList.h"
-#include "lldb/Target/Target.h"
-#include "lldb/Interpreter/CommandCompletions.h"
 #include "lldb/Core/FileSpec.h"
-
+#include "lldb/Core/FileSpecList.h"
+#include "lldb/Interpreter/Args.h"
+#include "lldb/Interpreter/CommandCompletions.h"
+#include "lldb/Interpreter/CommandInterpreter.h"
+#include "lldb/Target/Target.h"
+#include "lldb/Utility/CleanUp.h"
 
 using namespace lldb_private;
 
@@ -154,6 +153,8 @@ DiskFilesOrDirectories
     
     if (end_ptr == NULL)
     {
+#if LLDB_CONFIG_TILDE_RESOLVES_TO_USER
+
         // There's no directory.  If the thing begins with a "~" then this is a bare
         // user name.
         if (*partial_name_copy == '~')
@@ -168,7 +169,7 @@ DiskFilesOrDirectories
            // Not sure how this would happen, a username longer than PATH_MAX?  Still...
             if (resolved_username_len >= sizeof (resolved_username))
                 return matches.GetSize();
-            else if (resolved_username_len == 0)
+            if (resolved_username_len == 0)
             {
                 // The user name didn't resolve, let's look in the password database for matches.
                 // The user name database contains duplicates, and is not in alphabetical order, so
@@ -197,7 +198,6 @@ DiskFilesOrDirectories
                 }
                 return matches.GetSize();
             }    
-            
             //The thing exists, put a '/' on the end, and return it...
             // FIXME: complete user names here:
             partial_name_copy[partial_name_len] = '/';
@@ -207,6 +207,8 @@ DiskFilesOrDirectories
             return matches.GetSize();
         }
         else
+#endif // LLDB_CONFIG_TILDE_RESOLVES_TO_USER
+
         {
             // The containing part is the CWD, and the whole string is the remainder.
             containing_part[0] = '.';
@@ -236,7 +238,8 @@ DiskFilesOrDirectories
     
     // Look for a user name in the containing part, and if it's there, resolve it and stick the
     // result back into the containing_part:
-    
+
+#if LLDB_CONFIG_TILDE_RESOLVES_TO_USER
     if (*partial_name_copy == '~')
     {
         size_t resolved_username_len = FileSpec::ResolveUsername(containing_part, containing_part, sizeof (containing_part));
@@ -244,20 +247,19 @@ DiskFilesOrDirectories
         if (resolved_username_len == 0 || resolved_username_len >= sizeof (containing_part))
             return matches.GetSize();
     }
-    
+#endif // #if LLDB_CONFIG_TILDE_RESOLVES_TO_USER
+
     // Okay, containing_part is now the directory we want to open and look for files:
-    
-    DIR *dir_stream;
-    
-    dir_stream = opendir(containing_part);
-    if (dir_stream == NULL)
+
+    lldb_utility::CleanUp <DIR *, int> dir_stream (opendir(containing_part), NULL, closedir);
+    if (!dir_stream.is_valid())
         return matches.GetSize();
-        
+    
     struct dirent *dirent_buf;
     
     size_t baselen = end_ptr - partial_name_copy;
     
-    while ((dirent_buf = readdir(dir_stream)) != NULL) 
+    while ((dirent_buf = readdir(dir_stream.get())) != NULL) 
     {
         char *name = dirent_buf->d_name;
         
@@ -599,35 +601,24 @@ CommandCompletions::SymbolCompleter::SearchCallback (
     bool complete
 )
 {
-    SymbolContextList func_list;
-    SymbolContextList sym_list;
-
-    if (context.module_sp != NULL)
+    if (context.module_sp)
     {
-        if (context.module_sp)
-        {
-            context.module_sp->FindSymbolsMatchingRegExAndType (m_regex, lldb::eSymbolTypeCode, sym_list);
-            context.module_sp->FindFunctions (m_regex, true, func_list);
-        }
+        SymbolContextList sc_list;        
+        const bool include_symbols = true;
+        const bool append = true;
+        context.module_sp->FindFunctions (m_regex, include_symbols, append, sc_list);
 
         SymbolContext sc;
         // Now add the functions & symbols to the list - only add if unique:
-        for (uint32_t i = 0; i < func_list.GetSize(); i++)
+        for (uint32_t i = 0; i < sc_list.GetSize(); i++)
         {
-            if (func_list.GetContextAtIndex(i, sc))
+            if (sc_list.GetContextAtIndex(i, sc))
             {
                 if (sc.function)
                 {
                     m_match_set.insert (sc.function->GetMangled().GetDemangledName());
                 }
-            }
-        }
-
-        for (uint32_t i = 0; i < sym_list.GetSize(); i++)
-        {
-            if (sym_list.GetContextAtIndex(i, sc))
-            {
-                if (sc.symbol && sc.symbol->GetAddressRangePtr())
+                else if (sc.symbol && sc.symbol->GetAddressRangePtr())
                 {
                     m_match_set.insert (sc.symbol->GetMangled().GetDemangledName());
                 }

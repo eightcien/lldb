@@ -4,7 +4,7 @@ Test that lldb command "command source" works correctly.
 See also http://llvm.org/viewvc/llvm-project?view=rev&revision=109673.
 """
 
-import os, time
+import os, sys
 import unittest2
 import lldb
 from lldbtest import *
@@ -20,8 +20,22 @@ class CommandSourceTestCase(TestBase):
         # the "my" package that defines the date() function.
         self.runCmd("command source .lldb")
 
+        # Let's temporarily redirect the stdout to our StringIO session object
+        # in order to capture the script evaluation output.
+        old_stdout = sys.stdout
+        session = StringIO.StringIO()
+        sys.stdout = session
+
         # Python should evaluate "my.date()" successfully.
         self.runCmd("script my.date()")
+
+        # Now restore stdout to the way we were. :-)
+        sys.stdout = old_stdout
+
+        import datetime
+        self.expect(session.getvalue(), "script my.date() runs successfully",
+                    exe=False,
+            substrs = [str(datetime.date.today())])
 
 
 if __name__ == '__main__':

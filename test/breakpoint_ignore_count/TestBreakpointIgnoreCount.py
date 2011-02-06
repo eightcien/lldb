@@ -63,7 +63,7 @@ class BreakpointIgnoreCountTestCase(TestBase):
             patterns = ['Process .* stopped'])
 
         # Also check the hit count, which should be 2, due to ignore count of 1.
-        self.expect("breakpoint list", BREAKPOINT_HIT_THRICE,
+        self.expect("breakpoint list -f", BREAKPOINT_HIT_THRICE,
             substrs = ["resolved = 1",
                        "hit count = 2"])
 
@@ -102,7 +102,7 @@ class BreakpointIgnoreCountTestCase(TestBase):
 
         # Now launch the process, and do not stop at entry point.
         error = lldb.SBError()
-        self.process = target.Launch (None, None, os.ctermid(), os.ctermid(), os.ctermid(), None, 0, False, error)
+        self.process = target.Launch (self.dbg.GetListener(), None, None, os.ctermid(), os.ctermid(), os.ctermid(), None, 0, False, error)
 
         self.process = target.GetProcess()
         self.assertTrue(self.process.IsValid(), PROCESS_IS_VALID)

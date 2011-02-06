@@ -8,13 +8,14 @@
 //===----------------------------------------------------------------------===//
 
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <libgen.h>
-#include <stdlib.h>
-#include <sys/param.h>
 #include <sys/stat.h>
-#include <sys/types.h>
+
+#if LLDB_CONFIG_TILDE_RESOLVES_TO_USER
 #include <pwd.h>
+#endif
 
 #include <fstream>
 
@@ -27,6 +28,7 @@
 #include "lldb/Core/DataBufferMemoryMap.h"
 #include "lldb/Core/Stream.h"
 #include "lldb/Host/Host.h"
+#include "lldb/Utility/CleanUp.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -40,6 +42,8 @@ GetFileStats (const FileSpec *file_spec, struct stat *stats_ptr)
         return ::stat (resolved_path, stats_ptr) == 0;
     return false;
 }
+
+#if LLDB_CONFIG_TILDE_RESOLVES_TO_USER
 
 static const char*
 GetCachedGlobTildeSlash()
@@ -129,6 +133,7 @@ FileSpec::ResolveUsername (const char *src_path, char *dst_path, size_t dst_len)
     else 
         return ::snprintf (dst_path, dst_len, "%s%s", home_dir, remainder);
 }
+#endif // #if LLDB_CONFIG_TILDE_RESOLVES_TO_USER
 
 size_t
 FileSpec::Resolve (const char *src_path, char *dst_path, size_t dst_len)
@@ -138,6 +143,7 @@ FileSpec::Resolve (const char *src_path, char *dst_path, size_t dst_len)
 
     // Glob if needed for ~/, otherwise copy in case src_path is same as dst_path...
     char unglobbed_path[PATH_MAX];
+#if LLDB_CONFIG_TILDE_RESOLVES_TO_USER
     if (src_path[0] == '~')
     {
         size_t return_count = ResolveUsername(src_path, unglobbed_path, sizeof(unglobbed_path));
@@ -148,7 +154,10 @@ FileSpec::Resolve (const char *src_path, char *dst_path, size_t dst_len)
             ::snprintf (unglobbed_path, sizeof(unglobbed_path), "%s", src_path);
     }
     else
-        ::snprintf(unglobbed_path, sizeof(unglobbed_path), "%s", src_path);
+#endif // LLDB_CONFIG_TILDE_RESOLVES_TO_USER
+    {
+    	::snprintf(unglobbed_path, sizeof(unglobbed_path), "%s", src_path);
+    }
 
     // Now resolve the path if needed
     char resolved_path[PATH_MAX];
@@ -572,7 +581,7 @@ FileSpec::GetFileType () const
         default:
             break;
         }
-        return eFileTypeUknown;
+        return eFileTypeUnknown;
     }
     return eFileTypeInvalid;
 }
@@ -805,3 +814,102 @@ FileSpec::ReadFileLines (STLStringArray &lines)
     }
     return lines.size();
 }
+
+FileSpec::EnumerateDirectoryResult
+FileSpec::EnumerateDirectory
+(
+    const char *dir_path, 
+    bool find_directories,
+    bool find_files,
+    bool find_other,
+    EnumerateDirectoryCallbackType callback,
+    void *callback_baton
+)
+{
+    if (dir_path && dir_path[0])
+    {
+        lldb_utility::CleanUp <DIR *, int> dir_path_dir (opendir(dir_path), NULL, closedir);
+        if (dir_path_dir.is_valid())
+        {
+            struct dirent* dp;
+            while ((dp = readdir(dir_path_dir.get())) != NULL)
+            {
+                // Only search directories
+                if (dp->d_type == DT_DIR || dp->d_type == DT_UNKNOWN)
+                {
+                    if (dp->d_namlen == 1 && dp->d_name[0] == '.')
+                        continue;
+
+                    if (dp->d_namlen == 2 && dp->d_name[0] == '.' && dp->d_name[1] == '.')
+                        continue;
+                }
+            
+                bool call_callback = false;
+                FileSpec::FileType file_type = eFileTypeUnknown;
+
+                switch (dp->d_type)
+                {
+                default:
+                case DT_UNKNOWN:    file_type = eFileTypeUnknown;       call_callback = true;               break;
+                case DT_FIFO:       file_type = eFileTypePipe;          call_callback = find_other;         break;
+                case DT_CHR:        file_type = eFileTypeOther;         call_callback = find_other;         break;
+                case DT_DIR:        file_type = eFileTypeDirectory;     call_callback = find_directories;   break;
+                case DT_BLK:        file_type = eFileTypeOther;         call_callback = find_other;         break;
+                case DT_REG:        file_type = eFileTypeRegular;       call_callback = find_files;         break;
+                case DT_LNK:        file_type = eFileTypeSymbolicLink;  call_callback = find_other;         break;
+                case DT_SOCK:       file_type = eFileTypeSocket;        call_callback = find_other;         break;
+                case DT_WHT:        file_type = eFileTypeOther;         call_callback = find_other;         break;
+                }
+
+                if (call_callback)
+                {
+                    char child_path[PATH_MAX];
+                    const int child_path_len = ::snprintf (child_path, sizeof(child_path), "%s/%s", dir_path, dp->d_name);
+                    if (child_path_len < sizeof(child_path) - 1)
+                    {
+                        // Don't resolve the file type or path
+                        FileSpec child_path_spec (child_path, false);
+
+                        EnumerateDirectoryResult result = callback (callback_baton, file_type, child_path_spec);
+                        
+                        switch (result)
+                        {
+                        default:
+                        case eEnumerateDirectoryResultNext:  
+                            // Enumerate next entry in the current directory. We just
+                            // exit this switch and will continue enumerating the
+                            // current directory as we currently are...
+                            break;
+
+                        case eEnumerateDirectoryResultEnter: // Recurse into the current entry if it is a directory or symlink, or next if not
+                            if (FileSpec::EnumerateDirectory (child_path, 
+                                                              find_directories, 
+                                                              find_files, 
+                                                              find_other, 
+                                                              callback, 
+                                                              callback_baton) == eEnumerateDirectoryResultQuit)
+                            {
+                                // The subdirectory returned Quit, which means to 
+                                // stop all directory enumerations at all levels.
+                                return eEnumerateDirectoryResultQuit;
+                            }
+                            break;
+                        
+                        case eEnumerateDirectoryResultExit:  // Exit from the current directory at the current level.
+                            // Exit from this directory level and tell parent to 
+                            // keep enumerating.
+                            return eEnumerateDirectoryResultNext;
+
+                        case eEnumerateDirectoryResultQuit:  // Stop directory enumerations at any level
+                            return eEnumerateDirectoryResultQuit;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // By default when exiting a directory, we tell the parent enumeration
+    // to continue enumerating.
+    return eEnumerateDirectoryResultNext;    
+}
+

@@ -141,7 +141,11 @@ ModuleList::GetModuleAtIndex(uint32_t idx)
 }
 
 size_t
-ModuleList::FindFunctions (const ConstString &name, uint32_t name_type_mask, bool append, SymbolContextList &sc_list)
+ModuleList::FindFunctions (const ConstString &name, 
+                           uint32_t name_type_mask, 
+                           bool include_symbols,
+                           bool append, 
+                           SymbolContextList &sc_list)
 {
     if (!append)
         sc_list.Clear();
@@ -150,14 +154,17 @@ ModuleList::FindFunctions (const ConstString &name, uint32_t name_type_mask, boo
     collection::const_iterator pos, end = m_modules.end();
     for (pos = m_modules.begin(); pos != end; ++pos)
     {
-        (*pos)->FindFunctions (name, name_type_mask, true, sc_list);
+        (*pos)->FindFunctions (name, name_type_mask, include_symbols, true, sc_list);
     }
     
     return sc_list.GetSize();
 }
 
 uint32_t
-ModuleList::FindGlobalVariables (const ConstString &name, bool append, uint32_t max_matches, VariableList& variable_list)
+ModuleList::FindGlobalVariables (const ConstString &name, 
+                                 bool append, 
+                                 uint32_t max_matches, 
+                                 VariableList& variable_list)
 {
     size_t initial_size = variable_list.GetSize();
     Mutex::Locker locker(m_modules_mutex);
@@ -171,7 +178,10 @@ ModuleList::FindGlobalVariables (const ConstString &name, bool append, uint32_t 
 
 
 uint32_t
-ModuleList::FindGlobalVariables (const RegularExpression& regex, bool append, uint32_t max_matches, VariableList& variable_list)
+ModuleList::FindGlobalVariables (const RegularExpression& regex, 
+                                 bool append, 
+                                 uint32_t max_matches, 
+                                 VariableList& variable_list)
 {
     size_t initial_size = variable_list.GetSize();
     Mutex::Locker locker(m_modules_mutex);
@@ -185,7 +195,9 @@ ModuleList::FindGlobalVariables (const RegularExpression& regex, bool append, ui
 
 
 size_t
-ModuleList::FindSymbolsWithNameAndType (const ConstString &name, SymbolType symbol_type, SymbolContextList &sc_list)
+ModuleList::FindSymbolsWithNameAndType (const ConstString &name, 
+                                        SymbolType symbol_type, 
+                                        SymbolContextList &sc_list)
 {
     Mutex::Locker locker(m_modules_mutex);
     sc_list.Clear();
@@ -203,7 +215,7 @@ public:
     //--------------------------------------------------------------
     ModuleMatches (const FileSpec *file_spec_ptr,
                    const ArchSpec *arch_ptr,
-                   const UUID *uuid_ptr,
+                   const lldb_private::UUID *uuid_ptr,
                    const ConstString *object_name) :
         m_file_spec_ptr (file_spec_ptr),
         m_arch_ptr (arch_ptr),
@@ -248,10 +260,10 @@ private:
     //--------------------------------------------------------------
     // Member variables.
     //--------------------------------------------------------------
-    const FileSpec *    m_file_spec_ptr;
-    const ArchSpec *    m_arch_ptr;
-    const UUID *        m_uuid_ptr;
-    const ConstString * m_object_name;
+    const FileSpec *            m_file_spec_ptr;
+    const ArchSpec *            m_arch_ptr;
+    const lldb_private::UUID *  m_uuid_ptr;
+    const ConstString *         m_object_name;
 };
 
 size_t
@@ -259,7 +271,7 @@ ModuleList::FindModules
 (
     const FileSpec *file_spec_ptr,
     const ArchSpec *arch_ptr,
-    const UUID *uuid_ptr,
+    const lldb_private::UUID *uuid_ptr,
     const ConstString *object_name,
     ModuleList& matching_module_list
 ) const
@@ -522,7 +534,7 @@ ModuleList::FindSharedModules
 (
     const FileSpec& in_file_spec,
     const ArchSpec& arch,
-    const UUID *uuid_ptr,
+    const lldb_private::UUID *uuid_ptr,
     const ConstString *object_name_ptr,
     ModuleList &matching_module_list
 )
@@ -537,7 +549,7 @@ ModuleList::GetSharedModule
 (
     const FileSpec& in_file_spec,
     const ArchSpec& arch,
-    const UUID *uuid_ptr,
+    const lldb_private::UUID *uuid_ptr,
     const ConstString *object_name_ptr,
     off_t object_offset,
     ModuleSP &module_sp,

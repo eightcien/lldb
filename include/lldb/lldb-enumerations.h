@@ -10,12 +10,6 @@
 #ifndef LLDB_enumerations_h_
 #define LLDB_enumerations_h_
 
-#if !defined (__APPLE__)
-
-#include <endian.h>
-
-#endif
-
 namespace lldb {
 
 //----------------------------------------------------------------------
@@ -24,16 +18,19 @@ namespace lldb {
 typedef enum StateType
 {
     eStateInvalid = 0,
-    eStateUnloaded,
-    eStateAttaching,
-    eStateLaunching,
-    eStateStopped,
-    eStateRunning,
-    eStateStepping,
-    eStateCrashed,
-    eStateDetached,
-    eStateExited,
-    eStateSuspended
+    eStateUnloaded,     ///< Process is object is valid, but not currently loaded
+    eStateConnected,    ///< Process is connected to remote debug services, but not launched or attached to anything yet
+    eStateAttaching,    ///< Process is currently trying to attach
+    eStateLaunching,    ///< Process is in the process of launching
+    eStateStopped,      ///< Process or thread is stopped and can be examined.
+    eStateRunning,      ///< Process or thread is running and can't be examined.
+    eStateStepping,     ///< Process or thread is in the process of stepping and can not be examined.
+    eStateCrashed,      ///< Process or thread has crashed and can be examined.
+    eStateDetached,     ///< Process has been detached and can't be examined.
+    eStateExited,       ///< Process has exited and can't be examined.
+    eStateSuspended     ///< Process or thread is in a suspended state as far
+                        ///< as the debugger is concerned while other processes
+                        ///< or threads get the chance to run.
 } StateType;
 
 //----------------------------------------------------------------------
@@ -86,41 +83,9 @@ typedef enum AddressType
 typedef enum ByteOrder
 {
     eByteOrderInvalid   = 0,
-    eByteOrderLittle    = 1234,
-    eByteOrderBig       = 4321,
-    eByteOrderPDP       = 3412,
-
-#if defined (__APPLE__)
-
-// On Mac OS X there are preprocessor defines automatically defined
-// for the byte order that we can rely on.
-
-#if   defined (__LITTLE_ENDIAN__)
-    eByteOrderHost      = eByteOrderLittle
-#elif defined (__BIG_ENDIAN__)
-    eByteOrderHost      = eByteOrderBig
-#elif defined (__PDP_ENDIAN__)
-    eByteOrderHost      = eByteOrderPDP
-#else
-#error unable to detect endianness
-#endif
-
-#else
-
-// On linux we rely upon the defines in <endian.h>
-
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-    eByteOrderHost      = eByteOrderLittle
-#elif __BYTE_ORDER == __BIG_ENDIAN
-    eByteOrderHost      = eByteOrderBig
-#elif __BYTE_ORDER == __PDP_ENDIAN
-    eByteOrderHost      = eByteOrderPDP
-#else
-#error unable to detect endianness
-#endif
-
-#endif
-
+    eByteOrderBig       = 1,
+    eByteOrderPDP       = 2,
+    eByteOrderLittle    = 4,
 } ByteOrder;
 
 //----------------------------------------------------------------------
@@ -615,7 +580,9 @@ typedef enum PathType
     ePathTypeLLDBShlibDir,          // The directory where the lldb.so (unix) or LLDB mach-o file in LLDB.framework (MacOSX) exists
     ePathTypeSupportExecutableDir,  // Find LLDB support executable directory (debugserver, etc)
     ePathTypeHeaderDir,             // Find LLDB header file directory
-    ePathTypePythonDir              // Find Python modules (PYTHONPATH) directory
+    ePathTypePythonDir,             // Find Python modules (PYTHONPATH) directory
+    ePathTypeLLDBSystemPlugins,     // System plug-ins directory
+    ePathTypeLLDBUserPlugins        // User plug-ins directory
 } PathType;
 
 

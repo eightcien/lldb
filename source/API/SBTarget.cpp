@@ -30,6 +30,7 @@
 #include "lldb/Core/RegularExpression.h"
 #include "lldb/Core/SearchFilter.h"
 #include "lldb/Core/STLUtils.h"
+#include "lldb/Host/Host.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/TargetList.h"
@@ -120,6 +121,7 @@ SBTarget::GetDebugger () const
 SBProcess
 SBTarget::Launch 
 (
+    SBListener &listener, 
     char const **argv,
     char const **envp,
     const char *stdin_path,
@@ -155,7 +157,28 @@ SBTarget::Launch
         if (getenv("LLDB_LAUNCH_FLAG_DISABLE_ASLR"))
             launch_flags |= eLaunchFlagDisableASLR;
 
-        if ((launch_flags & eLaunchFlagLaunchInTTY) || getenv("LLDB_LAUNCH_FLAG_LAUNCH_IN_TTY"))
+        static const char *g_launch_tty = NULL;
+        static bool g_got_launch_tty = false;
+        if (!g_got_launch_tty)
+        {
+            // Get the LLDB_LAUNCH_FLAG_LAUNCH_IN_TTY only once
+            g_got_launch_tty = true;
+            g_launch_tty = ::getenv ("LLDB_LAUNCH_FLAG_LAUNCH_IN_TTY");
+            if (g_launch_tty)
+            {
+                // LLDB_LAUNCH_FLAG_LAUNCH_IN_TTY is a path to a terminal to reuse
+                // if the first character is '/', else it is a boolean value.
+                if (g_launch_tty[0] != '/')
+                {
+                    if (Args::StringToBoolean(g_launch_tty, false, NULL))
+                        g_launch_tty = "";
+                    else
+                        g_launch_tty = NULL;
+                }
+            }
+        }
+        
+        if ((launch_flags & eLaunchFlagLaunchInTTY) || g_launch_tty)
         {
             ArchSpec arch (m_opaque_sp->GetArchitecture ());
             
@@ -182,17 +205,21 @@ SBTarget::Launch
                     exec_path_plus_argv.push_back(NULL);
                         
 
-                    lldb::pid_t pid = Host::LaunchInNewTerminal (NULL,
-                                                             &exec_path_plus_argv[0],
-                                                             envp,
-                                                             working_directory,
-                                                             &arch,
-                                                             true,
-                                                             launch_flags & eLaunchFlagDisableASLR);
-                
+                    const char *tty_name = NULL;
+                    if (g_launch_tty && g_launch_tty[0] == '/')
+                        tty_name = g_launch_tty;
+                    
+                    lldb::pid_t pid = Host::LaunchInNewTerminal (tty_name,
+                                                                 &exec_path_plus_argv[0],
+                                                                 envp,
+                                                                 working_directory,
+                                                                 &arch,
+                                                                 true,
+                                                                 launch_flags & eLaunchFlagDisableASLR);
+
                     if (pid != LLDB_INVALID_PROCESS_ID)
                     {
-                        sb_process = AttachToProcessWithID(pid, error);
+                        sb_process = AttachToProcessWithID(listener, pid, error);
                     }
                     else
                     {
@@ -211,7 +238,10 @@ SBTarget::Launch
         }
         else
         {
-            sb_process.SetProcess (m_opaque_sp->CreateProcess (m_opaque_sp->GetDebugger().GetListener()));
+            if (listener.IsValid())
+                sb_process.SetProcess (m_opaque_sp->CreateProcess (listener.ref()));
+            else
+                sb_process.SetProcess (m_opaque_sp->CreateProcess (m_opaque_sp->GetDebugger().GetListener()));
 
             if (sb_process.IsValid())
             {
@@ -268,6 +298,7 @@ SBTarget::Launch
 lldb::SBProcess
 SBTarget::AttachToProcessWithID 
 (
+    SBListener &listener, 
     lldb::pid_t pid,// The process ID to attach to
     SBError& error  // An error explaining what went wrong if attach fails
 )
@@ -276,7 +307,11 @@ SBTarget::AttachToProcessWithID
     if (m_opaque_sp)
     {
         Mutex::Locker api_locker (m_opaque_sp->GetAPIMutex());
-        sb_process.SetProcess (m_opaque_sp->CreateProcess (m_opaque_sp->GetDebugger().GetListener()));
+        if (listener.IsValid())
+            sb_process.SetProcess (m_opaque_sp->CreateProcess (listener.ref()));
+        else
+            sb_process.SetProcess (m_opaque_sp->CreateProcess (m_opaque_sp->GetDebugger().GetListener()));
+        
 
         if (sb_process.IsValid())
         {
@@ -298,6 +333,7 @@ SBTarget::AttachToProcessWithID
 lldb::SBProcess
 SBTarget::AttachToProcessWithName 
 (
+    SBListener &listener, 
     const char *name,   // basename of process to attach to
     bool wait_for,      // if true wait for a new instance of "name" to be launched
     SBError& error      // An error explaining what went wrong if attach fails
@@ -308,7 +344,10 @@ SBTarget::AttachToProcessWithName
     {
         Mutex::Locker api_locker (m_opaque_sp->GetAPIMutex());
 
-        sb_process.SetProcess (m_opaque_sp->CreateProcess (m_opaque_sp->GetDebugger().GetListener()));
+        if (listener.IsValid())
+            sb_process.SetProcess (m_opaque_sp->CreateProcess (listener.ref()));
+        else
+            sb_process.SetProcess (m_opaque_sp->CreateProcess (m_opaque_sp->GetDebugger().GetListener()));
 
         if (sb_process.IsValid())
         {

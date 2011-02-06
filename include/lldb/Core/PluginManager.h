@@ -12,12 +12,19 @@
 #define liblldb_PluginManager_h_
 
 #include "lldb/lldb-private.h"
+#include "lldb/Core/FileSpec.h"
 
 namespace lldb_private {
 
 class PluginManager
 {
 public:
+    static void
+    Initialize ();
+    
+    static void
+    Terminate ();
+
     //------------------------------------------------------------------
     // ABI
     //------------------------------------------------------------------
@@ -71,6 +78,23 @@ public:
     static DynamicLoaderCreateInstance
     GetDynamicLoaderCreateCallbackForPluginName (const char *name);
 
+
+    //------------------------------------------------------------------
+    // EmulateInstruction
+    //------------------------------------------------------------------
+    static bool
+    RegisterPlugin (const char *name,
+                    const char *description,
+                    EmulateInstructionCreateInstance create_callback);
+    
+    static bool
+    UnregisterPlugin (EmulateInstructionCreateInstance create_callback);
+    
+    static EmulateInstructionCreateInstance
+    GetEmulateInstructionCreateCallbackAtIndex (uint32_t idx);
+    
+    static EmulateInstructionCreateInstance
+    GetEmulateInstructionCreateCallbackForPluginName (const char *name);
 
     //------------------------------------------------------------------
     // LanguageRuntime

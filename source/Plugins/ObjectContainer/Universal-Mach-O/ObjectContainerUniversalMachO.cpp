@@ -73,7 +73,7 @@ ObjectContainerUniversalMachO::CreateInstance
 bool
 ObjectContainerUniversalMachO::MagicBytesMatch (DataBufferSP& dataSP)
 {
-    DataExtractor data(dataSP, eByteOrderHost, 4);
+    DataExtractor data(dataSP, lldb::endian::InlHostByteOrder(), 4);
     uint32_t offset = 0;
     uint32_t magic = data.GetU32(&offset);
     return magic == UniversalMagic || magic == UniversalMagicSwapped;
@@ -190,7 +190,7 @@ ObjectContainerUniversalMachO::GetArchitectureAtIndex (uint32_t idx, ArchSpec& a
 {
     if (idx < m_header.nfat_arch)
     {
-        arch.SetArch(m_fat_archs[idx].cputype, m_fat_archs[idx].cpusubtype);
+        arch.SetMachOArch (m_fat_archs[idx].cputype, m_fat_archs[idx].cpusubtype);
         return true;
     }
     return false;

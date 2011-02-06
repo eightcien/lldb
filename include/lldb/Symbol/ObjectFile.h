@@ -15,6 +15,7 @@
 #include "lldb/Core/FileSpec.h"
 #include "lldb/Core/ModuleChild.h"
 #include "lldb/Core/PluginInterface.h"
+#include "lldb/Host/Endian.h"
 #include "lldb/Symbol/Symtab.h"
 #include "lldb/Symbol/UnwindTable.h"
 
@@ -67,7 +68,7 @@ public:
         m_file (),  // This file could be different from the original module's file
         m_offset (offset),
         m_length (length),
-        m_data (headerDataSP, lldb::eByteOrderHost, 4),
+        m_data (headerDataSP, lldb::endian::InlHostByteOrder(), 4),
         m_unwind_table (*this)
     {
         if (file_spec_ptr)
@@ -278,7 +279,7 @@ public:
     ///     \a uuid, \b false otherwise.
     //------------------------------------------------------------------
     virtual bool
-    GetUUID (UUID* uuid) = 0;
+    GetUUID (lldb_private::UUID* uuid) = 0;
 
     //------------------------------------------------------------------
     /// Gets whether endian swapping should occur when extracting data

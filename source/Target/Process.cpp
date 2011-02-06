@@ -230,14 +230,15 @@ Process::Process(Target &target, Listener &listener) :
     m_dynamic_checkers_ap (),
     m_unix_signals (),
     m_target_triple (),
-    m_byte_order (eByteOrderHost),
+    m_byte_order (lldb::endian::InlHostByteOrder()),
     m_addr_byte_size (0),
     m_abi_sp (),
     m_process_input_reader (),
     m_stdio_communication ("process.stdio"),
     m_stdio_communication_mutex (Mutex::eMutexTypeRecursive),
     m_stdout_data (),
-    m_memory_cache ()
+    m_memory_cache (),
+    m_next_event_action_ap()
 {
     UpdateInstanceName();
 
@@ -1583,55 +1584,65 @@ Process::Launch
     return error;
 }
 
-Error
-Process::CompleteAttach ()
+Process::NextEventAction::EventActionResult
+Process::AttachCompletionHandler::PerformAction (lldb::EventSP &event_sp)
 {
-    Error error;
-
-    if (GetID() == LLDB_INVALID_PROCESS_ID)
+    StateType state = ProcessEventData::GetStateFromEvent (event_sp.get());
+    switch (state) 
     {
-        error.SetErrorString("no process");
-    }
-
-    EventSP event_sp;
-    StateType state = WaitForProcessStopPrivate(NULL, event_sp);
-    if (state == eStateStopped || state == eStateCrashed)
-    {
-        DidAttach ();
-        // Figure out which one is the executable, and set that in our target:
-        ModuleList &modules = GetTarget().GetImages();
-    
-        size_t num_modules = modules.GetSize();
-        for (size_t i = 0; i < num_modules; i++)
+        case eStateRunning:
+            return eEventActionRetry;
+        
+        case eStateStopped:
+        case eStateCrashed:
         {
-            ModuleSP module_sp = modules.GetModuleAtIndex(i);
-            if (module_sp->IsExecutable())
+            // During attach, prior to sending the eStateStopped event, 
+            // lldb_private::Process subclasses must set the process must set
+            // the new process ID.
+            assert (m_process->GetID() != LLDB_INVALID_PROCESS_ID);
+            m_process->DidAttach ();
+            // Figure out which one is the executable, and set that in our target:
+            ModuleList &modules = m_process->GetTarget().GetImages();
+            
+            size_t num_modules = modules.GetSize();
+            for (size_t i = 0; i < num_modules; i++)
             {
-                ModuleSP exec_module = GetTarget().GetExecutableModule();
-                if (!exec_module || exec_module != module_sp)
+                ModuleSP module_sp = modules.GetModuleAtIndex(i);
+                if (module_sp->IsExecutable())
                 {
-                    
-                    GetTarget().SetExecutableModule (module_sp, false);
+                    ModuleSP exec_module = m_process->GetTarget().GetExecutableModule();
+                    if (!exec_module || exec_module != module_sp)
+                    {
+                        
+                        m_process->GetTarget().SetExecutableModule (module_sp, false);
+                    }
+                    break;
                 }
-                break;
             }
+            return eEventActionSuccess;
         }
+            
+            
+            break;
+        default:
+        case eStateExited:   
+        case eStateInvalid:
+            m_exit_string.assign ("No valid Process");
+            return eEventActionExit;
+            break;
+    }
+}
 
-        // This delays passing the stopped event to listeners till DidLaunch gets
-        // a chance to complete...
-        HandlePrivateEvent(event_sp);
-        StartPrivateStateThread();
-    }
-    else
-    {
-        // We exited while trying to launch somehow.  Don't call DidLaunch as that's
-        // not likely to work, and return an invalid pid.
-        if (state == eStateExited)
-            HandlePrivateEvent (event_sp);
-        error.SetErrorStringWithFormat("invalid state after attach: %s", 
-                                        lldb_private::StateAsCString(state));
-    }
-    return error;
+Process::NextEventAction::EventActionResult
+Process::AttachCompletionHandler::HandleBeingInterrupted()
+{
+    return eEventActionSuccess;
+}
+
+const char *
+Process::AttachCompletionHandler::GetExitString ()
+{
+    return m_exit_string.c_str();
 }
 
 Error
@@ -1660,7 +1671,8 @@ Process::Attach (lldb::pid_t attach_pid)
         error = DoAttachToProcessWithID (attach_pid);
         if (error.Success())
         {
-            error = CompleteAttach();
+            SetNextEventAction(new Process::AttachCompletionHandler(this));
+            StartPrivateStateThread();
         }
         else
         {
@@ -1717,11 +1729,55 @@ Process::Attach (const char *process_name, bool wait_for_launch)
         }
         else
         {
-            error = CompleteAttach();
+            SetNextEventAction(new Process::AttachCompletionHandler(this));
+            StartPrivateStateThread();
         }
     }
     return error;
 }
+
+Error
+Process::ConnectRemote (const char *remote_url)
+{
+    m_target_triple.Clear();
+    m_abi_sp.reset();
+    m_process_input_reader.reset();
+    
+    // Find the process and its architecture.  Make sure it matches the architecture
+    // of the current Target, and if not adjust it.
+    
+    Error error (DoConnectRemote (remote_url));
+    if (error.Success())
+    {
+        SetNextEventAction(new Process::AttachCompletionHandler(this));
+        StartPrivateStateThread();
+//        TimeValue timeout;
+//        timeout = TimeValue::Now();
+//        timeout.OffsetWithMicroSeconds(000);
+//        EventSP event_sp;
+//        StateType state = WaitForProcessStopPrivate(NULL, event_sp);
+//        
+//        if (state == eStateStopped || state == eStateCrashed)
+//        {
+//            DidLaunch ();
+//            
+//            // This delays passing the stopped event to listeners till DidLaunch gets
+//            // a chance to complete...
+//            HandlePrivateEvent (event_sp);
+//            StartPrivateStateThread ();
+//        }
+//        else if (state == eStateExited)
+//        {
+//            // We exited while trying to launch somehow.  Don't call DidLaunch as that's
+//            // not likely to work, and return an invalid pid.
+//            HandlePrivateEvent (event_sp);
+//        }
+//
+//        StartPrivateStateThread();
+    }
+    return error;
+}
+
 
 Error
 Process::Resume ()
@@ -1769,73 +1825,80 @@ Process::Resume ()
 Error
 Process::Halt ()
 {
+    // Pause our private state thread so we can ensure no one else eats
+    // the stop event out from under us.
+    PausePrivateStateThread();
+
+    EventSP event_sp;
     Error error (WillHalt());
     
     if (error.Success())
     {
         
         bool caused_stop = false;
-        EventSP event_sp;
         
-        // Pause our private state thread so we can ensure no one else eats
-        // the stop event out from under us.
-        PausePrivateStateThread();
-
         // Ask the process subclass to actually halt our process
         error = DoHalt(caused_stop);
         if (error.Success())
         {
-            // If "caused_stop" is true, then DoHalt stopped the process. If
-            // "caused_stop" is false, the process was already stopped.
-            // If the DoHalt caused the process to stop, then we want to catch
-            // this event and set the interrupted bool to true before we pass
-            // this along so clients know that the process was interrupted by
-            // a halt command.
-            if (caused_stop)
+            if (m_public_state.GetValue() == eStateAttaching)
             {
-                // Wait for 2 seconds for the process to stop.
-                TimeValue timeout_time;
-                timeout_time = TimeValue::Now();
-                timeout_time.OffsetWithSeconds(1);
-                StateType state = WaitForStateChangedEventsPrivate (&timeout_time, event_sp);
-                
-                if (state == eStateInvalid)
+                SetExitStatus(SIGKILL, "Cancelled async attach.");
+                Destroy ();
+            }
+            else
+            {
+                // If "caused_stop" is true, then DoHalt stopped the process. If
+                // "caused_stop" is false, the process was already stopped.
+                // If the DoHalt caused the process to stop, then we want to catch
+                // this event and set the interrupted bool to true before we pass
+                // this along so clients know that the process was interrupted by
+                // a halt command.
+                if (caused_stop)
                 {
-                    // We timeout out and didn't get a stop event...
-                    error.SetErrorString ("Halt timed out.");
-                }
-                else
-                {
-                    if (StateIsStoppedState (state))
+                    // Wait for 2 seconds for the process to stop.
+                    TimeValue timeout_time;
+                    timeout_time = TimeValue::Now();
+                    timeout_time.OffsetWithSeconds(1);
+                    StateType state = WaitForStateChangedEventsPrivate (&timeout_time, event_sp);
+                    
+                    if (state == eStateInvalid)
                     {
-                        // We caused the process to interrupt itself, so mark this
-                        // as such in the stop event so clients can tell an interrupted
-                        // process from a natural stop
-                        ProcessEventData::SetInterruptedInEvent (event_sp.get(), true);
+                        // We timeout out and didn't get a stop event...
+                        error.SetErrorString ("Halt timed out.");
                     }
                     else
                     {
-                        LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_PROCESS));
-                        if (log)
-                            log->Printf("Process::Halt() failed to stop, state is: %s", StateAsCString(state));
-                        error.SetErrorString ("Did not get stopped event after halt.");
+                        if (StateIsStoppedState (state))
+                        {
+                            // We caused the process to interrupt itself, so mark this
+                            // as such in the stop event so clients can tell an interrupted
+                            // process from a natural stop
+                            ProcessEventData::SetInterruptedInEvent (event_sp.get(), true);
+                        }
+                        else
+                        {
+                            LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_PROCESS));
+                            if (log)
+                                log->Printf("Process::Halt() failed to stop, state is: %s", StateAsCString(state));
+                            error.SetErrorString ("Did not get stopped event after halt.");
+                        }
                     }
                 }
+                DidHalt();
             }
-            DidHalt();
-
         }
-        // Resume our private state thread before we post the event (if any)
-        ResumePrivateStateThread();
-
-        // Post any event we might have consumed. If all goes well, we will have
-        // stopped the process, intercepted the event and set the interrupted
-        // bool in the event.  Post it to the private event queue and that will end up
-        // correctly setting the state.
-        if (event_sp)
-            m_private_state_broadcaster.BroadcastEvent(event_sp);
-
     }
+    // Resume our private state thread before we post the event (if any)
+    ResumePrivateStateThread();
+
+    // Post any event we might have consumed. If all goes well, we will have
+    // stopped the process, intercepted the event and set the interrupted
+    // bool in the event.  Post it to the private event queue and that will end up
+    // correctly setting the state.
+    if (event_sp)
+        m_private_state_broadcaster.BroadcastEvent(event_sp);
+
     return error;
 }
 
@@ -1928,6 +1991,7 @@ Process::ShouldBroadcastEvent (Event *event_ptr)
 
     switch (state)
     {
+        case eStateConnected:
         case eStateAttaching:
         case eStateLaunching:
         case eStateDetached:
@@ -2123,7 +2187,36 @@ void
 Process::HandlePrivateEvent (EventSP &event_sp)
 {
     LogSP log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_PROCESS));
+    
     const StateType new_state = Process::ProcessEventData::GetStateFromEvent(event_sp.get());
+    
+    // First check to see if anybody wants a shot at this event:
+    if (m_next_event_action_ap.get() != NULL)
+    {
+        NextEventAction::EventActionResult action_result = m_next_event_action_ap->PerformAction(event_sp);
+        switch (action_result)
+        {
+            case NextEventAction::eEventActionSuccess:
+                SetNextEventAction(NULL);
+                break;
+            case NextEventAction::eEventActionRetry:
+                break;
+            case NextEventAction::eEventActionExit:
+                // Handle Exiting Here.  If we already got an exited event,
+                // we should just propagate it.  Otherwise, swallow this event,
+                // and set our state to exit so the next event will kill us.
+                if (new_state != eStateExited)
+                {
+                    // FIXME: should cons up an exited event, and discard this one.
+                    SetExitStatus(0, m_next_event_action_ap->GetExitString());
+                    SetNextEventAction(NULL);
+                    return;
+                }
+                SetNextEventAction(NULL);
+                break;
+        }
+    }
+    
     // See if we should broadcast this state to external clients?
     const bool should_broadcast = ShouldBroadcastEvent (event_sp.get());
 

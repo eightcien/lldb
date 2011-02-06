@@ -84,7 +84,7 @@ class ClassTypesTestCase(TestBase):
                        'stop reason = breakpoint'])
 
         # The breakpoint should have a hit count of 1.
-        self.expect("breakpoint list", BREAKPOINT_HIT_ONCE,
+        self.expect("breakpoint list -f", BREAKPOINT_HIT_ONCE,
             substrs = [' resolved, hit count = 1'])
 
         # We should be stopped on the ctor function of class C.
@@ -120,7 +120,7 @@ class ClassTypesTestCase(TestBase):
 
         # Now launch the process, and do not stop at entry point.
         error = lldb.SBError()
-        self.process = target.Launch (None, None, os.ctermid(), os.ctermid(), os.ctermid(), None, 0, False, error)
+        self.process = target.Launch (self.dbg.GetListener(), None, None, os.ctermid(), os.ctermid(), os.ctermid(), None, 0, False, error)
         #self.breakAfterLaunch(self.process, "C::C(int, int, int)")
 
         if not error.Success() or not self.process.IsValid():
@@ -172,7 +172,7 @@ class ClassTypesTestCase(TestBase):
                        'stop reason = breakpoint'])
 
         # The breakpoint should have a hit count of 1.
-        self.expect("breakpoint list", BREAKPOINT_HIT_ONCE,
+        self.expect("breakpoint list -f", BREAKPOINT_HIT_ONCE,
             substrs = [' resolved, hit count = 1'])
 
         # Continue on inside the ctor() body...

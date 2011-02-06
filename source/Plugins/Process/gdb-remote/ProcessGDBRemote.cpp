@@ -184,18 +184,22 @@ ProcessGDBRemote::EnablePluginLogging (Stream *strm, Args &command)
 }
 
 void
-ProcessGDBRemote::BuildDynamicRegisterInfo ()
+ProcessGDBRemote::BuildDynamicRegisterInfo (bool force)
 {
-    char register_info_command[64];
+    if (!force && m_register_info.GetNumRegisters() > 0)
+        return;
+
+    char packet[128];
     m_register_info.Clear();
     StringExtractorGDBRemote::Type packet_type = StringExtractorGDBRemote::eResponse;
     uint32_t reg_offset = 0;
     uint32_t reg_num = 0;
     for (; packet_type == StringExtractorGDBRemote::eResponse; ++reg_num)
     {
-        ::snprintf (register_info_command, sizeof(register_info_command), "qRegisterInfo%x", reg_num);
+        const int packet_len = ::snprintf (packet, sizeof(packet), "qRegisterInfo%x", reg_num);
+        assert (packet_len < sizeof(packet));
         StringExtractorGDBRemote response;
-        if (m_gdb_comm.SendPacketAndWaitForResponse(register_info_command, response, 2, false))
+        if (m_gdb_comm.SendPacketAndWaitForResponse(packet, packet_len, response, 2, false))
         {
             packet_type = response.GetType();
             if (packet_type == StringExtractorGDBRemote::eResponse)
@@ -350,6 +354,56 @@ ProcessGDBRemote::WillAttachToProcessWithName (const char *process_name, bool wa
 }
 
 Error
+ProcessGDBRemote::DoConnectRemote (const char *remote_url)
+{
+    Error error (WillLaunchOrAttach ());
+    
+    if (error.Fail())
+        return error;
+
+    if (strncmp (remote_url, "connect://", strlen ("connect://")) == 0)
+    {
+        error = ConnectToDebugserver (remote_url);
+    }
+    else
+    {
+        error.SetErrorStringWithFormat ("unsupported remote url: %s", remote_url);
+    }
+
+    if (error.Fail())
+        return error;
+    StartAsyncThread ();
+
+    lldb::pid_t pid = m_gdb_comm.GetCurrentProcessID (m_packet_timeout);
+    if (pid == LLDB_INVALID_PROCESS_ID)
+    {
+        // We don't have a valid process ID, so note that we are connected
+        // and could now request to launch or attach, or get remote process 
+        // listings...
+        SetPrivateState (eStateConnected);
+    }
+    else
+    {
+        // We have a valid process
+        SetID (pid);
+        StringExtractorGDBRemote response;
+        if (m_gdb_comm.SendPacketAndWaitForResponse("?", 1, response, m_packet_timeout, false))
+        {
+            const StateType state = SetThreadStopInfo (response);
+            if (state == eStateStopped)
+            {
+                SetPrivateState (state);
+            }
+            else
+                error.SetErrorStringWithFormat ("Process %i was reported after connecting to '%s', but state was not stopped: %s", pid, remote_url, StateAsCString (state));
+        }
+        else
+            error.SetErrorStringWithFormat ("Process %i was reported after connecting to '%s', but no stop reply packet was received", pid, remote_url);
+    }
+    return error;
+}
+
+Error
 ProcessGDBRemote::WillLaunchOrAttach ()
 {
     Error error;
@@ -390,6 +444,8 @@ ProcessGDBRemote::DoLaunch
         ArchSpec inferior_arch(module->GetArchitecture());
         char host_port[128];
         snprintf (host_port, sizeof(host_port), "localhost:%u", get_random_port ());
+        char connect_url[128];
+        snprintf (connect_url, sizeof(connect_url), "connect://%s", host_port);
 
         const bool launch_process = true;
         bool start_debugserver_with_inferior_args = false;
@@ -413,7 +469,7 @@ ProcessGDBRemote::DoLaunch
             if (error.Fail())
                 return error;
 
-            error = ConnectToDebugserver (host_port);
+            error = ConnectToDebugserver (connect_url);
             if (error.Success())
             {
                 SetID (m_gdb_comm.GetCurrentProcessID (m_packet_timeout));
@@ -437,7 +493,7 @@ ProcessGDBRemote::DoLaunch
             if (error.Fail())
                 return error;
 
-            error = ConnectToDebugserver (host_port);
+            error = ConnectToDebugserver (connect_url);
             if (error.Success())
             {
                 // Send the environment and the program + arguments after we connect
@@ -511,20 +567,18 @@ ProcessGDBRemote::DoLaunch
 
 
 Error
-ProcessGDBRemote::ConnectToDebugserver (const char *host_port)
+ProcessGDBRemote::ConnectToDebugserver (const char *connect_url)
 {
     Error error;
     // Sleep and wait a bit for debugserver to start to listen...
     std::auto_ptr<ConnectionFileDescriptor> conn_ap(new ConnectionFileDescriptor());
     if (conn_ap.get())
     {
-        std::string connect_url("connect://");
-        connect_url.append (host_port);
         const uint32_t max_retry_count = 50;
         uint32_t retry_count = 0;
         while (!m_gdb_comm.IsConnected())
         {
-            if (conn_ap->Connect(connect_url.c_str(), &error) == eConnectionStatusSuccess)
+            if (conn_ap->Connect(connect_url, &error) == eConnectionStatusSuccess)
             {
                 m_gdb_comm.SetConnection (conn_ap.release());
                 break;
@@ -577,7 +631,9 @@ ProcessGDBRemote::ConnectToDebugserver (const char *host_port)
 void
 ProcessGDBRemote::DidLaunchOrAttach ()
 {
-    ProcessGDBRemoteLog::LogIf (GDBR_LOG_PROCESS, "ProcessGDBRemote::DidLaunch()");
+    LogSP log (ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_PROCESS));
+    if (log)
+        log->Printf ("ProcessGDBRemote::DidLaunch()");
     if (GetID() == LLDB_INVALID_PROCESS_ID)
     {
         m_dynamic_loader_ap.reset();
@@ -586,27 +642,37 @@ ProcessGDBRemote::DidLaunchOrAttach ()
     {
         m_dispatch_queue_offsets_addr = LLDB_INVALID_ADDRESS;
 
-        BuildDynamicRegisterInfo ();
+        BuildDynamicRegisterInfo (false);
 
         m_byte_order = m_gdb_comm.GetByteOrder();
 
         StreamString strm;
 
-        ArchSpec inferior_arch;
+        ArchSpec inferior_arch (m_gdb_comm.GetHostArchitecture());
+
         // See if the GDB server supports the qHostInfo information
         const char *vendor = m_gdb_comm.GetVendorString().AsCString();
         const char *os_type = m_gdb_comm.GetOSString().AsCString();
-        ArchSpec arch_spec (GetTarget().GetArchitecture());
-        
-        if (arch_spec.IsValid() && arch_spec == ArchSpec ("arm"))
+        const ArchSpec target_arch (GetTarget().GetArchitecture());
+        const ArchSpec arm_any("arm");
+        bool set_target_arch = true;
+        if (target_arch.IsValid())
         {
-            // For ARM we can't trust the arch of the process as it could
-            // have an armv6 object file, but be running on armv7 kernel.
-            inferior_arch = m_gdb_comm.GetHostArchitecture();
+            if (inferior_arch == arm_any)
+            {
+                // For ARM we can't trust the arch of the process as it could
+                // have an armv6 object file, but be running on armv7 kernel.
+                // So we only set the ARM architecture if the target isn't set
+                // to ARM already...
+                if (target_arch == arm_any)
+                {
+                    inferior_arch = target_arch;
+                    set_target_arch = false;
+                }
+            }
         }
-        
-        if (!inferior_arch.IsValid())
-            inferior_arch = arch_spec;
+        if (set_target_arch)
+            GetTarget().SetArchitecture (inferior_arch);
 
         if (vendor == NULL)
             vendor = Host::GetVendorString().AsCString("apple");
@@ -640,14 +706,14 @@ ProcessGDBRemote::DoAttachToProcessWithID (lldb::pid_t attach_pid)
     // Clear out and clean up from any current state
     Clear();
     ArchSpec arch_spec = GetTarget().GetArchitecture();
-    
-    //LogSP log (ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_PROCESS));
-    
-    
+
     if (attach_pid != LLDB_INVALID_PROCESS_ID)
     {
         char host_port[128];
         snprintf (host_port, sizeof(host_port), "localhost:%u", get_random_port ());
+        char connect_url[128];
+        snprintf (connect_url, sizeof(connect_url), "connect://%s", host_port);
+
         error = StartDebugserverProcess (host_port,                 // debugserver_url
                                          NULL,                      // inferior_argv
                                          NULL,                      // inferior_envp
@@ -672,47 +738,15 @@ ProcessGDBRemote::DoAttachToProcessWithID (lldb::pid_t attach_pid)
         }
         else
         {
-            error = ConnectToDebugserver (host_port);
+            error = ConnectToDebugserver (connect_url);
             if (error.Success())
             {
                 char packet[64];
                 const int packet_len = ::snprintf (packet, sizeof(packet), "vAttach;%x", attach_pid);
-                StringExtractorGDBRemote response;
-                StateType stop_state = m_gdb_comm.SendContinuePacketAndWaitForResponse (this, 
-                                                                                        packet, 
-                                                                                        packet_len, 
-                                                                                        response);
-                switch (stop_state)
-                {
-                case eStateStopped:
-                case eStateCrashed:
-                case eStateSuspended:
-                    SetID (attach_pid);
-                    m_last_stop_packet = response;
-                    m_last_stop_packet.SetFilePos (0);
-                    SetPrivateState (stop_state);
-                    break;
-
-                case eStateExited:
-                    m_last_stop_packet = response;
-                    m_last_stop_packet.SetFilePos (0);
-                    response.SetFilePos(1);
-                    SetExitStatus(response.GetHexU8(), NULL);
-                    break;
-
-                default:
-                    SetExitStatus(-1, "unable to attach to process");
-                    break;
-                }
-
+                
+                m_async_broadcaster.BroadcastEvent (eBroadcastBitAsyncContinue, new EventDataBytes (packet, packet_len));
             }
         }
-    }
-
-    lldb::pid_t pid = GetID();
-    if (pid == LLDB_INVALID_PROCESS_ID)
-    {
-        KillDebugserverProcess();
     }
     return error;
 }
@@ -747,12 +781,15 @@ ProcessGDBRemote::DoAttachToProcessWithName (const char *process_name, bool wait
     // HACK: require arch be set correctly at the target level until we can
     // figure out a good way to determine the arch of what we are attaching to
 
-    //LogSP log (ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_PROCESS));
     if (process_name && process_name[0])
     {
-        char host_port[128];
         ArchSpec arch_spec = GetTarget().GetArchitecture();
+
+        char host_port[128];
         snprintf (host_port, sizeof(host_port), "localhost:%u", get_random_port ());
+        char connect_url[128];
+        snprintf (connect_url, sizeof(connect_url), "connect://%s", host_port);
+
         error = StartDebugserverProcess (host_port,                 // debugserver_url
                                          NULL,                      // inferior_argv
                                          NULL,                      // inferior_envp
@@ -776,7 +813,7 @@ ProcessGDBRemote::DoAttachToProcessWithName (const char *process_name, bool wait
         }
         else
         {
-            error = ConnectToDebugserver (host_port);
+            error = ConnectToDebugserver (connect_url);
             if (error.Success())
             {
                 StreamString packet;
@@ -786,94 +823,23 @@ ProcessGDBRemote::DoAttachToProcessWithName (const char *process_name, bool wait
                 else
                     packet.PutCString("vAttachName");
                 packet.PutChar(';');
-                packet.PutBytesAsRawHex8(process_name, strlen(process_name), eByteOrderHost, eByteOrderHost);
-                StringExtractorGDBRemote response;
-                StateType stop_state = m_gdb_comm.SendContinuePacketAndWaitForResponse (this, 
-                                                                                        packet.GetData(), 
-                                                                                        packet.GetSize(), 
-                                                                                        response);
-                switch (stop_state)
-                {
-                case eStateStopped:
-                case eStateCrashed:
-                case eStateSuspended:
-                    SetID (m_gdb_comm.GetCurrentProcessID(m_packet_timeout));
-                    m_last_stop_packet = response;
-                    m_last_stop_packet.SetFilePos (0);
-                    SetPrivateState (stop_state);
-                    break;
+                packet.PutBytesAsRawHex8(process_name, strlen(process_name), lldb::endian::InlHostByteOrder(), lldb::endian::InlHostByteOrder());
+                
+                m_async_broadcaster.BroadcastEvent (eBroadcastBitAsyncContinue, new EventDataBytes (packet.GetData(), packet.GetSize()));
 
-                case eStateExited:
-                    m_last_stop_packet = response;
-                    m_last_stop_packet.SetFilePos (0);
-                    response.SetFilePos(1);
-                    SetExitStatus(response.GetHexU8(), NULL);
-                    break;
-
-                default:
-                    SetExitStatus(-1, "unable to attach to process");
-                    break;
-                }
             }
         }
     }
-
-    lldb::pid_t pid = GetID();
-    if (pid == LLDB_INVALID_PROCESS_ID)
-    {
-        KillDebugserverProcess();
-        
-        if (error.Success())
-            error.SetErrorStringWithFormat("unable to attach to process named '%s'", process_name);
-    }
-    
     return error;
 }
 
-//                              
-//        if (wait_for_launch)
-//        {
-//            InputReaderSP reader_sp (new InputReader());
-//            StreamString instructions;
-//            instructions.Printf("Hit any key to cancel waiting for '%s' to launch...", process_name);
-//            error = reader_sp->Initialize (AttachInputReaderCallback, // callback
-//                                                this, // baton
-//                                                eInputReaderGranularityByte,
-//                                                NULL, // End token
-//                                                false);
-//            
-//            StringExtractorGDBRemote response;
-//            m_waiting_for_attach = true;
-//            FILE *reader_out_fh = reader_sp->GetOutputFileHandle();
-//            while (m_waiting_for_attach)
-//            {
-//                // Wait for one second for the stop reply packet
-//                if (m_gdb_comm.WaitForPacket(response, 1))
-//                {
-//                    // Got some sort of packet, see if it is the stop reply packet?
-//                    char ch = response.GetChar(0);
-//                    if (ch == 'T')
-//                    {
-//                        m_waiting_for_attach = false;
-//                    }
-//                }
-//                else
-//                {
-//                    // Put a period character every second
-//                    fputc('.', reader_out_fh);
-//                }
-//            }
-//        }
-//    }
-//    return GetID();
-//}
 
 void
 ProcessGDBRemote::DidAttach ()
 {
+    DidLaunchOrAttach ();
     if (m_dynamic_loader_ap.get())
         m_dynamic_loader_ap->DidAttach();
-    DidLaunchOrAttach ();
 }
 
 Error
@@ -892,7 +858,9 @@ Error
 ProcessGDBRemote::DoResume ()
 {
     Error error;
-    ProcessGDBRemoteLog::LogIf (GDBR_LOG_PROCESS, "ProcessGDBRemote::Resume()");
+    LogSP log (ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_PROCESS));
+    if (log)
+        log->Printf ("ProcessGDBRemote::Resume()");
     
     Listener listener ("gdb-remote.resume-packet-sent");
     if (listener.StartListeningForEvents (&m_gdb_comm, GDBRemoteCommunication::eBroadcastBitRunPacketSent))
@@ -1095,7 +1063,7 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                 ThreadGDBRemote *gdb_thread = static_cast<ThreadGDBRemote *> (thread_sp.get());
 
                 gdb_thread->SetThreadDispatchQAddr (thread_dispatch_qaddr);
-                gdb_thread->SetName (thread_name.empty() ? thread_name.c_str() : NULL);
+                gdb_thread->SetName (thread_name.empty() ? NULL : thread_name.c_str());
                 if (exc_type != 0)
                 {
                     const size_t exc_data_size = exc_data.size();
@@ -1158,15 +1126,23 @@ ProcessGDBRemote::DoHalt (bool &caused_stop)
 
     bool timed_out = false;
     Mutex::Locker locker;
-
-    if (!m_gdb_comm.SendInterrupt (locker, 2, caused_stop, timed_out))
+    
+    if (m_public_state.GetValue() == eStateAttaching)
     {
-        if (timed_out)
-            error.SetErrorString("timed out sending interrupt packet");
-        else
-            error.SetErrorString("unknown error sending interrupt packet");
+        // We are being asked to halt during an attach. We need to just close
+        // our file handle and debugserver will go away, and we can be done...
+        m_gdb_comm.Disconnect();
     }
-
+    else
+    {
+        if (!m_gdb_comm.SendInterrupt (locker, 2, caused_stop, timed_out))
+        {
+            if (timed_out)
+                error.SetErrorString("timed out sending interrupt packet");
+            else
+                error.SetErrorString("unknown error sending interrupt packet");
+        }
+    }
     return error;
 }
 
@@ -1305,22 +1281,32 @@ ProcessGDBRemote::DoDestroy ()
     // Interrupt if our inferior is running...
     if (m_gdb_comm.IsConnected())
     {
-        StringExtractorGDBRemote response;
-        bool send_async = true;
-        if (m_gdb_comm.SendPacketAndWaitForResponse("k", 1, response, 2, send_async))
+        if (m_public_state.GetValue() == eStateAttaching)
         {
-            char packet_cmd = response.GetChar(0);
-
-            if (packet_cmd == 'W' || packet_cmd == 'X')
-            {
-                m_last_stop_packet = response;
-                SetExitStatus(response.GetHexU8(), NULL);
-            }
+            // We are being asked to halt during an attach. We need to just close
+            // our file handle and debugserver will go away, and we can be done...
+            m_gdb_comm.Disconnect();
         }
         else
         {
-            SetExitStatus(SIGABRT, NULL);
-            //error.SetErrorString("kill packet failed");
+
+            StringExtractorGDBRemote response;
+            bool send_async = true;
+            if (m_gdb_comm.SendPacketAndWaitForResponse("k", 1, response, 2, send_async))
+            {
+                char packet_cmd = response.GetChar(0);
+
+                if (packet_cmd == 'W' || packet_cmd == 'X')
+                {
+                    m_last_stop_packet = response;
+                    SetExitStatus(response.GetHexU8(), NULL);
+                }
+            }
+            else
+            {
+                SetExitStatus(SIGABRT, NULL);
+                //error.SetErrorString("kill packet failed");
+            }
         }
     }
     StopAsyncThread ();
@@ -1405,7 +1391,7 @@ ProcessGDBRemote::DoWriteMemory (addr_t addr, const void *buf, size_t size, Erro
 {
     StreamString packet;
     packet.Printf("M%llx,%zx:", addr, size);
-    packet.PutBytesAsRawHex8(buf, size, eByteOrderHost, eByteOrderHost);
+    packet.PutBytesAsRawHex8(buf, size, lldb::endian::InlHostByteOrder(), lldb::endian::InlHostByteOrder());
     StringExtractorGDBRemote response;
     if (m_gdb_comm.SendPacketAndWaitForResponse(packet.GetData(), packet.GetSize(), response, 2, true))
     {
@@ -1460,7 +1446,9 @@ ProcessGDBRemote::GetSTDOUT (char *buf, size_t buf_size, Error &error)
     size_t bytes_available = m_stdout_data.size();
     if (bytes_available > 0)
     {
-        ProcessGDBRemoteLog::LogIf (GDBR_LOG_PROCESS, "ProcessGDBRemote::%s (&%p[%u]) ...", __FUNCTION__, buf, buf_size);
+        LogSP log (ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_PROCESS));
+        if (log)
+            log->Printf ("ProcessGDBRemote::%s (&%p[%u]) ...", __FUNCTION__, buf, buf_size);
         if (bytes_available > buf_size)
         {
             memcpy(buf, m_stdout_data.c_str(), buf_size);
@@ -1723,25 +1711,6 @@ ProcessGDBRemote::DoSignal (int signo)
     return error;
 }
 
-//void
-//ProcessGDBRemote::STDIOReadThreadBytesReceived (void *baton, const void *src, size_t src_len)
-//{
-//    ProcessGDBRemote *process = (ProcessGDBRemote *)baton;
-//    process->AppendSTDOUT(static_cast<const char *>(src), src_len);
-//}
-
-//void
-//ProcessGDBRemote::AppendSTDOUT (const char* s, size_t len)
-//{
-//    ProcessGDBRemoteLog::LogIf (GDBR_LOG_PROCESS, "ProcessGDBRemote::%s (<%d> %s) ...", __FUNCTION__, len, s);
-//    Mutex::Locker locker(m_stdio_mutex);
-//    m_stdout_data.append(s, len);
-//
-//    // FIXME: Make a real data object for this and put it out.
-//    BroadcastEventIfUnique (eBroadcastBitSTDOUT);
-//}
-
-
 Error
 ProcessGDBRemote::StartDebugserverProcess
 (
@@ -1845,14 +1814,27 @@ ProcessGDBRemote::StartDebugserverProcess
             lldb_utility::PseudoTerminal pty;
             const char *stdio_path = NULL;
             if (launch_process && 
-                stdin_path == NULL && 
-                stdout_path == NULL && 
-                stderr_path == NULL && 
+                (stdin_path == NULL || stdout_path == NULL || stderr_path == NULL) &&
                 m_local_debugserver &&
                 no_stdio == false)
             {
                 if (pty.OpenFirstAvailableMaster(O_RDWR|O_NOCTTY, NULL, 0))
-                    stdio_path = pty.GetSlaveName (NULL, 0);
+                {
+                    const char *slave_name = pty.GetSlaveName (NULL, 0);
+                    if (stdin_path == NULL
+                        && stdout_path == NULL
+                        && stderr_path == NULL)
+                        stdio_path = slave_name;
+                    else
+                    {
+                        if (stdin_path == NULL)
+                            stdin_path = slave_name;
+                        if (stdout_path == NULL)
+                            stdout_path = slave_name;
+                        if (stderr_path == NULL)
+                            stderr_path = slave_name;
+                    }
+                }
             }
 
             // Start args with "debugserver /file/path -r --"
@@ -1938,7 +1920,7 @@ ProcessGDBRemote::StartDebugserverProcess
                 debugserver_args.AppendArgument(arg_cstr);
             }
 //            debugserver_args.AppendArgument("--log-file=/tmp/debugserver.txt");
-//            debugserver_args.AppendArgument("--log-flags=0x800e0e");
+//            debugserver_args.AppendArgument("--log-flags=0x802e0e");
 
             // Now append the program arguments
             if (launch_process)
@@ -2232,7 +2214,6 @@ ProcessGDBRemote::AsyncThread (void *arg)
         bool done = false;
         while (!done)
         {
-            log = ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_PROCESS);
             if (log)
                 log->Printf ("ProcessGDBRemote::%s (arg = %p, pid = %i) listener.WaitForEvent (NULL, event_sp)...", __FUNCTION__, arg, process->GetID());
             if (listener.WaitForEvent (NULL, event_sp))
@@ -2251,11 +2232,11 @@ ProcessGDBRemote::AsyncThread (void *arg)
                             {
                                 const char *continue_cstr = (const char *)continue_packet->GetBytes ();
                                 const size_t continue_cstr_len = continue_packet->GetByteSize ();
-                                log = ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_PROCESS);
                                 if (log)
                                     log->Printf ("ProcessGDBRemote::%s (arg = %p, pid = %i) got eBroadcastBitAsyncContinue: %s", __FUNCTION__, arg, process->GetID(), continue_cstr);
 
-                                process->SetPrivateState(eStateRunning);
+                                if (::strstr (continue_cstr, "vAttach") == NULL)
+                                    process->SetPrivateState(eStateRunning);
                                 StringExtractorGDBRemote response;
                                 StateType stop_state = process->GetGDBRemote().SendContinuePacketAndWaitForResponse (process, continue_cstr, continue_cstr_len, response);
 
@@ -2289,14 +2270,12 @@ ProcessGDBRemote::AsyncThread (void *arg)
                         break;
 
                     case eBroadcastBitAsyncThreadShouldExit:
-                        log = ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_PROCESS);
                         if (log)
                             log->Printf ("ProcessGDBRemote::%s (arg = %p, pid = %i) got eBroadcastBitAsyncThreadShouldExit...", __FUNCTION__, arg, process->GetID());
                         done = true;
                         break;
 
                     default:
-                        log = ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_PROCESS);
                         if (log)
                             log->Printf ("ProcessGDBRemote::%s (arg = %p, pid = %i) got unknown event 0x%8.8x", __FUNCTION__, arg, process->GetID(), event_type);
                         done = true;
@@ -2305,7 +2284,6 @@ ProcessGDBRemote::AsyncThread (void *arg)
             }
             else
             {
-                log = ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_PROCESS);
                 if (log)
                     log->Printf ("ProcessGDBRemote::%s (arg = %p, pid = %i) listener.WaitForEvent (NULL, event_sp) => false", __FUNCTION__, arg, process->GetID());
                 done = true;
@@ -2313,7 +2291,6 @@ ProcessGDBRemote::AsyncThread (void *arg)
         }
     }
 
-    log = ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_PROCESS);
     if (log)
         log->Printf ("ProcessGDBRemote::%s (arg = %p, pid = %i) thread exiting...", __FUNCTION__, arg, process->GetID());
 

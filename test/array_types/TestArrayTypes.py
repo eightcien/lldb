@@ -64,7 +64,7 @@ class ArrayTypesTestCase(TestBase):
                        'stop reason = breakpoint'])
 
         # The breakpoint should have a hit count of 1.
-        self.expect("breakpoint list", BREAKPOINT_HIT_ONCE,
+        self.expect("breakpoint list -f", BREAKPOINT_HIT_ONCE,
             substrs = ['resolved, hit count = 1'])
 
         # Issue 'variable list' command on several array-type variables.
@@ -111,7 +111,7 @@ class ArrayTypesTestCase(TestBase):
 
         # Now launch the process, and do not stop at entry point.
         error = lldb.SBError()
-        self.process = target.Launch (None, None, os.ctermid(), os.ctermid(), os.ctermid(), None, 0, False, error)
+        self.process = target.Launch (self.dbg.GetListener(), None, None, os.ctermid(), os.ctermid(), os.ctermid(), None, 0, False, error)
 
         self.process = target.GetProcess()
         self.assertTrue(self.process.IsValid(), PROCESS_IS_VALID)

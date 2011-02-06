@@ -240,7 +240,7 @@ LookupAddressInModule
 
         // If an offset was given, print out the address we ended up looking up
         if (offset)
-            strm.Printf("0x%llx: ", addr);
+            strm.Printf("File Address: 0x%llx\n", addr);
 
         ExecutionContextScope *exe_scope = interpreter.GetDebugger().GetExecutionContext().GetBestExecutionContextScope();
         strm.IndentMore();
@@ -360,33 +360,36 @@ LookupFunctionInModule (CommandInterpreter &interpreter, Stream &strm, Module *m
     if (module && name && name[0])
     {
         SymbolContextList sc_list;
-
-        SymbolVendor *symbol_vendor = module->GetSymbolVendor();
-        if (symbol_vendor)
+        const bool include_symbols = false;
+        const bool append = true;
+        uint32_t num_matches = 0;
+        if (name_is_regex)
         {
-            uint32_t num_matches = 0;
-            if (name_is_regex)
-            {
-                RegularExpression function_name_regex (name);
-                num_matches = symbol_vendor->FindFunctions(function_name_regex, true, sc_list);
-
-            }
-            else
-            {
-                ConstString function_name(name);
-                num_matches = symbol_vendor->FindFunctions(function_name, eFunctionNameTypeBase | eFunctionNameTypeFull | eFunctionNameTypeMethod | eFunctionNameTypeSelector, true, sc_list);
-            }
-
-            if (num_matches)
-            {
-                strm.Indent ();
-                strm.Printf("%u match%s found in ", num_matches, num_matches > 1 ? "es" : "");
-                DumpFullpath (strm, &module->GetFileSpec(), 0);
-                strm.PutCString(":\n");
-                DumpSymbolContextList (interpreter, strm, sc_list, true);
-            }
-            return num_matches;
+            RegularExpression function_name_regex (name);
+            num_matches = module->FindFunctions (function_name_regex, 
+                                                 include_symbols,
+                                                 append, 
+                                                 sc_list);
         }
+        else
+        {
+            ConstString function_name (name);
+            num_matches = module->FindFunctions (function_name, 
+                                                 eFunctionNameTypeBase | eFunctionNameTypeFull | eFunctionNameTypeMethod | eFunctionNameTypeSelector, 
+                                                 include_symbols,
+                                                 append, 
+                                                 sc_list);
+        }
+
+        if (num_matches)
+        {
+            strm.Indent ();
+            strm.Printf("%u match%s found in ", num_matches, num_matches > 1 ? "es" : "");
+            DumpFullpath (strm, &module->GetFileSpec(), 0);
+            strm.PutCString(":\n");
+            DumpSymbolContextList (interpreter, strm, sc_list, true);
+        }
+        return num_matches;
     }
     return 0;
 }
@@ -1309,7 +1312,7 @@ lldb::OptionDefinition
 CommandObjectImageList::CommandOptions::g_option_table[] =
 {
 { LLDB_OPT_SET_1, false, "arch",       'a', optional_argument, NULL, 0, eArgTypeWidth,   "Display the architecture when listing images."},
-{ LLDB_OPT_SET_1, false, "uuid",       'u', no_argument,       NULL, 0, eArgTypeNone,        "Display the UUID when listing images."},
+{ LLDB_OPT_SET_1, false, "uuid",       'u', no_argument,       NULL, 0, eArgTypeNone,    "Display the UUID when listing images."},
 { LLDB_OPT_SET_1, false, "fullpath",   'f', optional_argument, NULL, 0, eArgTypeWidth,   "Display the fullpath to the image object file."},
 { LLDB_OPT_SET_1, false, "directory",  'd', optional_argument, NULL, 0, eArgTypeWidth,   "Display the directory with optional width for the image object file."},
 { LLDB_OPT_SET_1, false, "basename",   'b', optional_argument, NULL, 0, eArgTypeWidth,   "Display the basename with optional width for the image object file."},

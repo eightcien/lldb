@@ -42,7 +42,7 @@ using namespace llvm::MachO;
 
 
 DynamicLoaderMacOSXDYLD::DYLDImageInfo *
-DynamicLoaderMacOSXDYLD::GetImageInfo (const FileSpec &file_spec, const UUID &uuid)
+DynamicLoaderMacOSXDYLD::GetImageInfo (const FileSpec &file_spec, const lldb_private::UUID &uuid)
 {
     DYLDImageInfo::collection::iterator pos, end = m_dyld_image_infos.end();
     for (pos = m_dyld_image_infos.begin(); pos != end; ++pos)
@@ -785,7 +785,7 @@ DynamicLoaderMacOSXDYLD::ReadMachHeader (lldb::addr_t addr, mach_header *header,
         ::memset (header, 0, sizeof(header));
 
         // Get the magic byte unswapped so we can figure out what we are dealing with
-        DataExtractor data(header_bytes.GetBytes(), header_bytes.GetByteSize(), eByteOrderHost, 4);
+        DataExtractor data(header_bytes.GetBytes(), header_bytes.GetByteSize(), lldb::endian::InlHostByteOrder(), 4);
         header->magic = data.GetU32(&offset);
         lldb::addr_t load_cmd_addr = addr;
         data.SetByteOrder(DynamicLoaderMacOSXDYLD::GetByteOrderFromMagic(header->magic));
@@ -1106,6 +1106,7 @@ DynamicLoaderMacOSXDYLD::PrivateProcessStateChanged (Process *process, StateType
     DEBUG_PRINTF("DynamicLoaderMacOSXDYLD::%s(%s)\n", __FUNCTION__, StateAsCString(state));
     switch (state)
     {
+    case eStateConnected:
     case eStateAttaching:
     case eStateLaunching:
     case eStateInvalid:

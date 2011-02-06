@@ -14,6 +14,7 @@
 #include "lldb/Core/DataExtractor.h"
 #include "lldb/Core/Scalar.h"
 #include "lldb/Target/Thread.h"
+#include "lldb/Host/Endian.h"
 
 #include "ProcessLinux.h"
 #include "ProcessMonitor.h"

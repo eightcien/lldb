@@ -834,13 +834,15 @@ FileSpec::EnumerateDirectory
             struct dirent* dp;
             while ((dp = readdir(dir_path_dir.get())) != NULL)
             {
+                size_t len = strlen(dp->d_name);
+
                 // Only search directories
                 if (dp->d_type == DT_DIR || dp->d_type == DT_UNKNOWN)
                 {
-                    if (dp->d_namlen == 1 && dp->d_name[0] == '.')
+                    if (len == 1 && strncmp(dp->d_name, ".", len) == 0)
                         continue;
 
-                    if (dp->d_namlen == 2 && dp->d_name[0] == '.' && dp->d_name[1] == '.')
+                    if (len == 2 && strncmp(dp->d_name, "..", len) == 0)
                         continue;
                 }
             

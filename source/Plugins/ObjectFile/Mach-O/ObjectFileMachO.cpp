@@ -11,7 +11,7 @@
 
 #include "lldb/Core/ArchSpec.h"
 #include "lldb/Core/DataBuffer.h"
-#include "lldb/Core/FileSpec.h"
+#include "lldb/Host/FileSpec.h"
 #include "lldb/Core/FileSpecList.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/PluginManager.h"
@@ -1351,7 +1351,7 @@ ObjectFileMachO::Dump (Stream *s)
 
     ArchSpec header_arch(eArchTypeMachO, m_header.cputype, m_header.cpusubtype);
 
-    *s << ", file = '" << m_file << "', arch = " << header_arch.AsCString() << "\n";
+    *s << ", file = '" << m_file << "', arch = " << header_arch.GetArchitectureName() << "\n";
 
     if (m_sections_ap.get())
         m_sections_ap->Dump(s, NULL, true, UINT32_MAX);
@@ -1436,15 +1436,11 @@ ObjectFileMachO::GetDependentModules (FileSpecList& files)
 }
 
 bool
-ObjectFileMachO::GetTargetTriple (ConstString &target_triple)
+ObjectFileMachO::GetArchitecture (ArchSpec &arch)
 {
     lldb_private::Mutex::Locker locker(m_mutex);
-    std::string triple(GetModule()->GetArchitecture().AsCString());
-    triple += "-apple-darwin";
-    target_triple.SetCString(triple.c_str());
-    if (target_triple)
-        return true;
-    return false;
+    arch.SetArchitecture (lldb::eArchTypeMachO, m_header.cputype, m_header.cpusubtype);
+    return true;
 }
 
 

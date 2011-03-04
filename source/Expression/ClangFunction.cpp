@@ -17,6 +17,7 @@
 #include "clang/CodeGen/ModuleBuilder.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/Module.h"
 
@@ -36,6 +37,7 @@
 #include "lldb/Target/Process.h"
 #include "lldb/Target/RegisterContext.h"
 #include "lldb/Target/StopInfo.h"
+#include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
 #include "lldb/Target/ThreadPlan.h"
 #include "lldb/Target/ThreadPlanCallFunction.h"
@@ -48,17 +50,17 @@ using namespace lldb_private;
 //----------------------------------------------------------------------
 ClangFunction::ClangFunction 
 (
-    const char *target_triple, 
+    ExecutionContextScope *exe_scope,
     ClangASTContext *ast_context, 
     void *return_qualtype, 
     const Address& functionAddress, 
     const ValueList &arg_value_list
 ) :
+    m_arch (),
     m_function_ptr (NULL),
     m_function_addr (functionAddress),
     m_function_return_qual_type(return_qualtype),
     m_clang_ast_context (ast_context),
-    m_target_triple (target_triple),
     m_wrapper_function_name ("__lldb_caller_function"),
     m_wrapper_struct_name ("__lldb_caller_struct"),
     m_wrapper_args_addrs (),
@@ -66,20 +68,26 @@ ClangFunction::ClangFunction
     m_compiled (false),
     m_JITted (false)
 {
+    if (exe_scope)
+    {
+        Target *target = exe_scope->CalculateTarget();
+        if (target)
+            m_arch = target->GetArchitecture();
+    }
 }
 
 ClangFunction::ClangFunction
 (
-    const char *target_triple, 
+    ExecutionContextScope *exe_scope,
     Function &function, 
     ClangASTContext *ast_context, 
     const ValueList &arg_value_list
 ) :
+    m_arch (),
     m_function_ptr (&function),
     m_function_addr (),
     m_function_return_qual_type (),
     m_clang_ast_context (ast_context),
-    m_target_triple (target_triple),
     m_wrapper_function_name ("__lldb_function_caller"),
     m_wrapper_struct_name ("__lldb_caller_struct"),
     m_wrapper_args_addrs (),
@@ -87,8 +95,15 @@ ClangFunction::ClangFunction
     m_compiled (false),
     m_JITted (false)
 {
+    if (exe_scope)
+    {
+        Target *target = exe_scope->CalculateTarget();
+        if (target)
+            m_arch = target->GetArchitecture();
+    }
+
     m_function_addr = m_function_ptr->GetAddressRange().GetBaseAddress();
-    m_function_return_qual_type = m_function_ptr->GetReturnType().GetClangType();
+    m_function_return_qual_type = m_function_ptr->GetReturnClangType();
 }
 
 //----------------------------------------------------------------------
@@ -148,12 +163,12 @@ ClangFunction::CompileFunction (Stream &errors)
     std::string args_list_buffer;  // This one stores the argument list called from the structure.
     for (size_t i = 0; i < num_args; i++)
     {
-        const char *type_string;
-        std::string type_stdstr;
+        std::string type_name;
 
         if (trust_function)
         {
-            type_string = m_function_ptr->GetArgumentTypeAtIndex(i).GetName().AsCString();
+            lldb::clang_type_t arg_clang_type = m_function_ptr->GetArgumentTypeAtIndex(i);
+            type_name = ClangASTContext::GetTypeName(arg_clang_type);
         }
         else
         {
@@ -161,8 +176,7 @@ ClangFunction::CompileFunction (Stream &errors)
             void *clang_qual_type = arg_value->GetClangType ();
             if (clang_qual_type != NULL)
             {
-                type_stdstr = ClangASTContext::GetTypeName(clang_qual_type);
-                type_string = type_stdstr.c_str();
+                type_name = ClangASTContext::GetTypeName(clang_qual_type);
             }
             else
             {   
@@ -171,14 +185,14 @@ ClangFunction::CompileFunction (Stream &errors)
             }
         }
 
-        m_wrapper_function_text.append (type_string);
+        m_wrapper_function_text.append (type_name);
         if (i < num_args - 1)
             m_wrapper_function_text.append (", ");
 
         char arg_buf[32];
         args_buffer.append ("    ");
-        args_buffer.append (type_string);
-        snprintf(arg_buf, 31, "arg_%ld", i);
+        args_buffer.append (type_name);
+        snprintf(arg_buf, 31, "arg_%zd", i);
         args_buffer.push_back (' ');
         args_buffer.append (arg_buf);
         args_buffer.append (";\n");
@@ -212,7 +226,7 @@ ClangFunction::CompileFunction (Stream &errors)
         
     // Okay, now compile this expression
     
-    m_parser.reset(new ClangExpressionParser(m_target_triple.c_str(), NULL, *this));
+    m_parser.reset(new ClangExpressionParser(NULL, *this));
     
     num_errors = m_parser->Parse (errors);
     

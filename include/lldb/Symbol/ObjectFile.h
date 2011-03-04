@@ -12,7 +12,7 @@
 
 #include "lldb/lldb-private.h"
 #include "lldb/Core/DataExtractor.h"
-#include "lldb/Core/FileSpec.h"
+#include "lldb/Host/FileSpec.h"
 #include "lldb/Core/ModuleChild.h"
 #include "lldb/Core/PluginInterface.h"
 #include "lldb/Host/Endian.h"
@@ -238,7 +238,7 @@ public:
     ///     false otherwise.
     //------------------------------------------------------------------
     virtual bool
-    GetTargetTriple(ConstString &target_triple) = 0;
+    GetArchitecture (ArchSpec &arch) = 0;
 
     //------------------------------------------------------------------
     /// Gets the section list for the currently selected architecture

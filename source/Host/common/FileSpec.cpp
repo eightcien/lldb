@@ -12,18 +12,19 @@
 #include <fcntl.h>
 #include <libgen.h>
 #include <sys/stat.h>
+#include <string.h>
+#include <fstream>
 
-#if LLDB_CONFIG_TILDE_RESOLVES_TO_USER
+#include "lldb/Host/Config.h" // Have to include this before we test the define...
+#ifdef LLDB_CONFIG_TILDE_RESOLVES_TO_USER
 #include <pwd.h>
 #endif
-
-#include <fstream>
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 
-#include "lldb/Core/FileSpec.h"
+#include "lldb/Host/FileSpec.h"
 #include "lldb/Core/DataBufferHeap.h"
 #include "lldb/Core/DataBufferMemoryMap.h"
 #include "lldb/Core/Stream.h"
@@ -43,7 +44,7 @@ GetFileStats (const FileSpec *file_spec, struct stat *stats_ptr)
     return false;
 }
 
-#if LLDB_CONFIG_TILDE_RESOLVES_TO_USER
+#ifdef LLDB_CONFIG_TILDE_RESOLVES_TO_USER
 
 static const char*
 GetCachedGlobTildeSlash()
@@ -62,6 +63,8 @@ GetCachedGlobTildeSlash()
     return g_tilde.c_str();
 }
 
+#endif // #ifdef LLDB_CONFIG_TILDE_RESOLVES_TO_USER
+
 // Resolves the username part of a path of the form ~user/other/directories, and
 // writes the result into dst_path.
 // Returns 0 if there WAS a ~ in the path but the username couldn't be resolved.
@@ -70,11 +73,14 @@ GetCachedGlobTildeSlash()
 size_t
 FileSpec::ResolveUsername (const char *src_path, char *dst_path, size_t dst_len)
 {
+    if (src_path == NULL || src_path[0] == '\0')
+        return 0;
+
+#ifdef LLDB_CONFIG_TILDE_RESOLVES_TO_USER
+
     char user_home[PATH_MAX];
     const char *user_name;
     
-    if (src_path == NULL || src_path[0] == '\0')
-        return 0;
     
     // If there's no ~, then just copy src_path straight to dst_path (they may be the same string...)
     if (src_path[0] != '~')
@@ -132,8 +138,46 @@ FileSpec::ResolveUsername (const char *src_path, char *dst_path, size_t dst_len)
         return 0;
     else 
         return ::snprintf (dst_path, dst_len, "%s%s", home_dir, remainder);
+#else
+    // Resolving home directories is not supported, just copy the path...
+    return ::snprintf (dst_path, dst_len, "%s", src_path);
+#endif // #ifdef LLDB_CONFIG_TILDE_RESOLVES_TO_USER    
 }
-#endif // #if LLDB_CONFIG_TILDE_RESOLVES_TO_USER
+
+size_t
+FileSpec::ResolvePartialUsername (const char *partial_name, StringList &matches)
+{
+#ifdef LLDB_CONFIG_TILDE_RESOLVES_TO_USER
+    size_t extant_entries = matches.GetSize();
+    
+    setpwent();
+    struct passwd *user_entry;
+    const char *name_start = partial_name + 1;
+    std::set<std::string> name_list;
+    
+    while ((user_entry = getpwent()) != NULL)
+    {
+        if (strstr(user_entry->pw_name, name_start) == user_entry->pw_name)
+        {
+            std::string tmp_buf("~");
+            tmp_buf.append(user_entry->pw_name);
+            tmp_buf.push_back('/');
+            name_list.insert(tmp_buf);                    
+        }
+    }
+    std::set<std::string>::iterator pos, end = name_list.end();
+    for (pos = name_list.begin(); pos != end; pos++)
+    {  
+        matches.AppendString((*pos).c_str());
+    }
+    return matches.GetSize() - extant_entries;
+#else
+    // Resolving home directories is not supported, just copy the path...
+    return 0;
+#endif // #ifdef LLDB_CONFIG_TILDE_RESOLVES_TO_USER    
+}
+
+
 
 size_t
 FileSpec::Resolve (const char *src_path, char *dst_path, size_t dst_len)
@@ -143,7 +187,7 @@ FileSpec::Resolve (const char *src_path, char *dst_path, size_t dst_len)
 
     // Glob if needed for ~/, otherwise copy in case src_path is same as dst_path...
     char unglobbed_path[PATH_MAX];
-#if LLDB_CONFIG_TILDE_RESOLVES_TO_USER
+#ifdef LLDB_CONFIG_TILDE_RESOLVES_TO_USER
     if (src_path[0] == '~')
     {
         size_t return_count = ResolveUsername(src_path, unglobbed_path, sizeof(unglobbed_path));
@@ -154,7 +198,7 @@ FileSpec::Resolve (const char *src_path, char *dst_path, size_t dst_len)
             ::snprintf (unglobbed_path, sizeof(unglobbed_path), "%s", src_path);
     }
     else
-#endif // LLDB_CONFIG_TILDE_RESOLVES_TO_USER
+#endif // #ifdef LLDB_CONFIG_TILDE_RESOLVES_TO_USER
     {
     	::snprintf(unglobbed_path, sizeof(unglobbed_path), "%s", src_path);
     }
@@ -834,15 +878,15 @@ FileSpec::EnumerateDirectory
             struct dirent* dp;
             while ((dp = readdir(dir_path_dir.get())) != NULL)
             {
-                size_t len = strlen(dp->d_name);
-
                 // Only search directories
                 if (dp->d_type == DT_DIR || dp->d_type == DT_UNKNOWN)
                 {
-                    if (len == 1 && strncmp(dp->d_name, ".", len) == 0)
+                    size_t len = strlen(dp->d_name);
+
+                    if (len == 1 && dp->d_name[0] == '.')
                         continue;
 
-                    if (len == 2 && strncmp(dp->d_name, "..", len) == 0)
+                    if (len == 2 && dp->d_name[0] == '.' && dp->d_name[1] == '.')
                         continue;
                 }
             

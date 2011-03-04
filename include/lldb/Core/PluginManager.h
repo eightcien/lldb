@@ -12,7 +12,7 @@
 #define liblldb_PluginManager_h_
 
 #include "lldb/lldb-private.h"
-#include "lldb/Core/FileSpec.h"
+#include "lldb/Host/FileSpec.h"
 
 namespace lldb_private {
 
@@ -185,6 +185,12 @@ public:
 
     static ProcessCreateInstance
     GetProcessCreateCallbackForPluginName (const char *name);
+    
+    static const char *
+    GetProcessPluginNameAtIndex (uint32_t idx);
+
+    static const char *
+    GetProcessPluginDescriptionAtIndex (uint32_t idx);
 
     //------------------------------------------------------------------
     // SymbolFile

@@ -97,23 +97,8 @@ public:
     CalculcateChecksum (const char *payload,
                         size_t payload_length);
 
-    void
-    SetAckMode (bool enabled)
-    {
-        m_send_acks = enabled;
-    }
-
     bool
-    GetThreadSuffixSupported () const
-    {
-        return m_thread_suffix_supported;
-    }
-    
-    void
-    SetThreadSuffixSupported (bool enabled)
-    {
-        m_thread_suffix_supported = enabled;
-    }
+    GetThreadSuffixSupported ();
 
     bool
     SendAsyncSignal (int signo);
@@ -211,6 +196,49 @@ public:
                 StringExtractorGDBRemote& response);
 
 
+    //------------------------------------------------------------------
+    /// Sets the path to use for stdin/out/err for a process
+    /// that will be launched with the 'A' packet.
+    ///
+    /// @param[in] path
+    ///     The path to use for stdin/out/err
+    ///
+    /// @return
+    ///     Zero if the for success, or an error code for failure.
+    //------------------------------------------------------------------
+    int
+    SetSTDIN (char const *path);
+    int
+    SetSTDOUT (char const *path);
+    int
+    SetSTDERR (char const *path);
+
+    //------------------------------------------------------------------
+    /// Sets the disable ASLR flag to \a enable for a process that will 
+    /// be launched with the 'A' packet.
+    ///
+    /// @param[in] enable
+    ///     A boolean value indicating wether to disable ASLR or not.
+    ///
+    /// @return
+    ///     Zero if the for success, or an error code for failure.
+    //------------------------------------------------------------------
+    int
+    SetDisableASLR (bool enable);
+
+    //------------------------------------------------------------------
+    /// Sets the working directory to \a path for a process that will 
+    /// be launched with the 'A' packet.
+    ///
+    /// @param[in] path
+    ///     The path to a directory to use when launching our processs
+    ///
+    /// @return
+    ///     Zero if the for success, or an error code for failure.
+    //------------------------------------------------------------------
+    int
+    SetWorkingDir (char const *path);
+
     lldb::addr_t
     AllocateMemory (size_t size, uint32_t permissions, uint32_t timeout_seconds);
 
@@ -229,12 +257,6 @@ public:
     bool
     GetHostInfo (uint32_t timeout_seconds);
 
-    bool 
-    HostInfoIsValid () const
-    {
-        return m_pointer_byte_size != 0;
-    }
-
     const lldb_private::ArchSpec &
     GetHostArchitecture ();
     
@@ -250,6 +272,33 @@ public:
     uint32_t
     GetAddressByteSize ();
 
+    bool
+    GetVContSupported (char flavor);
+
+    void
+    ResetDiscoverableSettings();
+
+    bool
+    GetHostInfo ();
+    
+    bool
+    GetSendAcks ();
+    
+    bool
+    GetSupportsThreadSuffix ();
+
+    bool
+    HasFullVContSupport ()
+    {
+        return GetVContSupported ('A');
+    }
+
+    bool
+    HasAnyVContSupport ()
+    {
+        return GetVContSupported ('a');
+    }
+
 protected:
     typedef std::list<std::string> packet_collection;
 
@@ -264,11 +313,24 @@ protected:
     bool
     WaitForNotRunningPrivate (const lldb_private::TimeValue *timeout_ptr);
 
+    bool
+    HostInfoIsValid () const
+    {
+        return m_supports_qHostInfo != lldb::eLazyBoolCalculate;
+    }
+
     //------------------------------------------------------------------
     // Classes that inherit from GDBRemoteCommunication can see and modify these
     //------------------------------------------------------------------
-    bool m_send_acks:1,
-         m_thread_suffix_supported:1;
+    lldb::LazyBool m_supports_not_sending_acks;
+    lldb::LazyBool m_supports_thread_suffix;
+    lldb::LazyBool m_supports_qHostInfo;
+    lldb::LazyBool m_supports_vCont_all;
+    lldb::LazyBool m_supports_vCont_any;
+    lldb::LazyBool m_supports_vCont_c;
+    lldb::LazyBool m_supports_vCont_C;
+    lldb::LazyBool m_supports_vCont_s;
+    lldb::LazyBool m_supports_vCont_S;
     lldb_private::Listener m_rx_packet_listener;
     lldb_private::Mutex m_sequence_mutex;    // Restrict access to sending/receiving packets to a single thread at a time
     lldb_private::Predicate<bool> m_public_is_running;

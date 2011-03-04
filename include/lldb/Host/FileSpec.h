@@ -19,7 +19,7 @@
 namespace lldb_private {
 
 //----------------------------------------------------------------------
-/// @class FileSpec FileSpec.h "lldb/Core/FileSpec.h"
+/// @class FileSpec FileSpec.h "lldb/Host/FileSpec.h"
 /// @brief A file utility class.
 ///
 /// A file specification class that divides paths up into a directory
@@ -520,9 +520,6 @@ public:
     static size_t
     Resolve (const char *src_path, char *dst_path, size_t dst_len);
 
-#if LLDB_CONFIG_TILDE_RESOLVES_TO_USER
-
-
     //------------------------------------------------------------------
     /// Resolves the user name at the beginning of \a src_path, and writes the output
     /// to \a dst_path.  Note, \a src_path can contain other path components after the
@@ -546,8 +543,9 @@ public:
     //------------------------------------------------------------------
     static size_t
     ResolveUsername (const char *src_path, char *dst_path, size_t dst_len);
-
-#endif
+    
+    static size_t
+    ResolvePartialUsername (const char *partial_name, StringList &matches);
 
     enum EnumerateDirectoryResult
     {

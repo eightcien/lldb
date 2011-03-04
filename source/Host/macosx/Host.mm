@@ -21,7 +21,7 @@
 #include "lldb/Core/ArchSpec.h"
 #include "lldb/Core/Communication.h"
 #include "lldb/Core/ConnectionFileDescriptor.h"
-#include "lldb/Core/FileSpec.h"
+#include "lldb/Host/FileSpec.h"
 #include "lldb/Core/Log.h"
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Core/StreamString.h"
@@ -255,7 +255,13 @@ LaunchInNewTerminalWithCommandFile
 
     ::strncat (temp_file_path, ".command", sizeof (temp_file_path));
 
-    StreamFile command_file (temp_file_path, "w");
+    StreamFile command_file;
+    command_file.GetFile().Open (temp_file_path, 
+                                 File::eOpenOptionWrite | File::eOpenOptionCanCreate,
+                                 File::ePermissionsDefault);
+    
+    if (!command_file.GetFile().IsValid())
+        return LLDB_INVALID_PROCESS_ID;
     
     FileSpec darwin_debug_file_spec;
     if (!Host::GetLLDBPath (ePathTypeSupportExecutableDir, darwin_debug_file_spec))
@@ -273,7 +279,7 @@ LaunchInNewTerminalWithCommandFile
     
     if (arch_spec && arch_spec->IsValid())
     {
-        command_file.Printf("--arch=%s ", arch_spec->AsCString());
+        command_file.Printf("--arch=%s ", arch_spec->GetArchitectureName());
     }
 
     if (disable_aslr)
@@ -291,7 +297,7 @@ LaunchInNewTerminalWithCommandFile
         }
     }
     command_file.PutCString("\necho Process exited with status $?\n");
-    command_file.Close();
+    command_file.GetFile().Close();
     if (::chmod (temp_file_path, S_IRWXU | S_IRWXG) != 0)
         return LLDB_INVALID_PROCESS_ID;
             
@@ -435,12 +441,12 @@ LaunchInNewTerminalWithAppleScript
     darwin_debug_file_spec.GetPath(launcher_path, sizeof(launcher_path));
 
     if (arch_spec)
-        command.Printf("arch -arch %s ", arch_spec->AsCString());
+        command.Printf("arch -arch %s ", arch_spec->GetArchitectureName());
 
     command.Printf("'%s' --unix-socket=%s", launcher_path, unix_socket_name.c_str());
 
     if (arch_spec && arch_spec->IsValid())
-        command.Printf(" --arch=%s", arch_spec->AsCString());
+        command.Printf(" --arch=%s", arch_spec->GetArchitectureName());
 
     if (working_dir)
         command.Printf(" --working-dir '%s'", working_dir);

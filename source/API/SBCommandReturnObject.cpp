@@ -65,9 +65,9 @@ SBCommandReturnObject::GetOutput ()
     {
         if (log)
             log->Printf ("SBCommandReturnObject(%p)::GetOutput () => \"%s\"", m_opaque_ap.get(), 
-                         m_opaque_ap->GetOutputStream().GetData());
+                         m_opaque_ap->GetOutputData());
 
-        return m_opaque_ap->GetOutputStream().GetData();
+        return m_opaque_ap->GetOutputData();
     }
 
     if (log)
@@ -85,9 +85,9 @@ SBCommandReturnObject::GetError ()
     {
         if (log)
             log->Printf ("SBCommandReturnObject(%p)::GetError () => \"%s\"", m_opaque_ap.get(),
-                         m_opaque_ap->GetErrorStream().GetData());
+                         m_opaque_ap->GetErrorData());
 
-        return m_opaque_ap->GetErrorStream().GetData();
+        return m_opaque_ap->GetErrorData();
     }
     
     if (log)
@@ -100,7 +100,7 @@ size_t
 SBCommandReturnObject::GetOutputSize ()
 {
     if (m_opaque_ap.get())
-        return m_opaque_ap->GetOutputStream().GetSize();
+        return strlen (m_opaque_ap->GetOutputData());
     return 0;
 }
 
@@ -108,7 +108,7 @@ size_t
 SBCommandReturnObject::GetErrorSize ()
 {
     if (m_opaque_ap.get())
-        return m_opaque_ap->GetErrorStream().GetSize();
+        return strlen(m_opaque_ap->GetErrorData());
     return 0;
 }
 
@@ -235,4 +235,18 @@ SBCommandReturnObject::GetDescription (SBStream &description)
         description.Printf ("No value");
 
     return true;
+}
+
+void
+SBCommandReturnObject::SetImmediateOutputFile (FILE *fh)
+{
+    if (m_opaque_ap.get())
+        m_opaque_ap->SetImmediateOutputFile (fh);
+}
+    
+void
+SBCommandReturnObject::SetImmediateErrorFile (FILE *fh)
+{
+    if (m_opaque_ap.get())
+        m_opaque_ap->SetImmediateErrorFile (fh);
 }

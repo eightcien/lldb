@@ -179,8 +179,8 @@ SymbolFileDWARF::SymbolFileDWARF(ObjectFile* objfile) :
     m_namespace_index(),
     m_indexed (false),
     m_is_external_ast_source (false),
-    m_ranges()//,
-    //m_unique_ast_type_map ()
+    m_ranges(),
+    m_unique_ast_type_map ()
 {
 }
 
@@ -195,6 +195,14 @@ GetDWARFMachOSegmentName ()
 {
     static ConstString g_dwarf_section_name ("__DWARF");
     return g_dwarf_section_name;
+}
+
+UniqueDWARFASTTypeMap &
+SymbolFileDWARF::GetUniqueDWARFASTTypeMap ()
+{
+    if (m_debug_map_symfile)
+        return m_debug_map_symfile->GetUniqueDWARFASTTypeMap ();
+    return m_unique_ast_type_map;
 }
 
 ClangASTContext &       
@@ -559,7 +567,7 @@ SymbolFileDWARF::ParseCompileUnit (DWARFCompileUnit* curr_cu, CompUnitSP& compil
             {
                 FileSpec cu_file_spec;
 
-                if (cu_die_name[0] == '/' || cu_comp_dir == NULL && cu_comp_dir[0])
+                if (cu_die_name[0] == '/' || cu_comp_dir == NULL || cu_comp_dir[0] == '\0')
                 {
                     // If we have a full path to the compile unit, we don't need to resolve
                     // the file.  This can be expensive e.g. when the source files are NFS mounted.
@@ -662,7 +670,7 @@ SymbolFileDWARF::ParseCompileUnitFunction (const SymbolContext& sc, DWARFCompile
         {
             Type *class_type = ResolveType (dwarf_cu, parent_die);
             if (class_type)
-                class_type->GetClangType();
+                class_type->GetClangFullType();
         }
         break;
 
@@ -1304,17 +1312,18 @@ SymbolFileDWARF::ParseChildMembers
                     Type *base_class_type = ResolveTypeUID(encoding_uid);
                     assert(base_class_type);
                     
+                    clang_type_t base_class_clang_type = base_class_type->GetClangFullType();
+                    assert (base_class_clang_type);
                     if (class_language == eLanguageTypeObjC)
                     {
-                        GetClangASTContext().SetObjCSuperClass(class_clang_type, base_class_type->GetClangType());
+                        GetClangASTContext().SetObjCSuperClass(class_clang_type, base_class_clang_type);
                     }
                     else
                     {
-                        base_classes.push_back (GetClangASTContext().CreateBaseClassSpecifier (base_class_type->GetClangType(), 
+                        base_classes.push_back (GetClangASTContext().CreateBaseClassSpecifier (base_class_clang_type, 
                                                                                                accessibility, 
                                                                                                is_virtual, 
                                                                                                is_base_of_class));
-                        assert(base_classes.back());
                     }
                 }
             }
@@ -1882,7 +1891,7 @@ SymbolFileDWARF::Index ()
         m_aranges->Sort();
 
 #if defined (ENABLE_DEBUG_PRINTF)
-        StreamFile s(stdout);
+        StreamFile s(stdout, false);
         s.Printf ("DWARF index for (%s) '%s/%s':", 
                   GetObjectFile()->GetModule()->GetArchitecture().AsCString(),
                   GetObjectFile()->GetFileSpec().GetDirectory().AsCString(), 
@@ -3169,133 +3178,129 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                         }
                     }
 
-//                    UniqueDWARFASTType unique_ast_entry;
-//                    if (decl.IsValid())
-//                    {
-//                        if (m_unique_ast_type_map.Find (type_name_const_str,
-//                                                        die,
-//                                                        decl,
-//                                                        unique_ast_entry))
-//                        {
-//                            // We have already parsed this type or from another 
-//                            // compile unit. GCC loves to use the "one definition
-//                            // rule" which can result in multiple definitions
-//                            // of the same class over and over in each compile
-//                            // unit.
-//                            type_sp = unique_ast_entry.m_type_sp;
-//                        }
-//                    }
-//                    
-//                    if (type_sp)
-//                    {
-//                        m_die_to_type[die] = type_sp.get();
-//
-//                    }
-//                    else
+                    UniqueDWARFASTType unique_ast_entry;
+                    if (decl.IsValid())
                     {
-                        DEBUG_PRINTF ("0x%8.8x: %s (\"%s\")\n", die->GetOffset(), DW_TAG_value_to_name(tag), type_name_cstr);
-
-                        int tag_decl_kind = -1;
-                        AccessType default_accessibility = eAccessNone;
-                        if (tag == DW_TAG_structure_type)
+                        if (GetUniqueDWARFASTTypeMap().Find (type_name_const_str,
+                                                             die,
+                                                             decl,
+                                                             unique_ast_entry))
                         {
-                            tag_decl_kind = clang::TTK_Struct;
-                            default_accessibility = eAccessPublic;
-                        }
-                        else if (tag == DW_TAG_union_type)
-                        {
-                            tag_decl_kind = clang::TTK_Union;
-                            default_accessibility = eAccessPublic;
-                        }
-                        else if (tag == DW_TAG_class_type)
-                        {
-                            tag_decl_kind = clang::TTK_Class;
-                            default_accessibility = eAccessPrivate;
-                        }
-
-
-                        if (is_forward_declaration)
-                        {
-                            // We have a forward declaration to a type and we need
-                            // to try and find a full declaration. We look in the
-                            // current type index just in case we have a forward
-                            // declaration followed by an actual declarations in the
-                            // DWARF. If this fails, we need to look elsewhere...
-                        
-                            type_sp = FindDefinitionTypeForDIE (dwarf_cu, die, type_name_const_str);
-
-                            if (!type_sp && m_debug_map_symfile)
-                            {
-                                // We weren't able to find a full declaration in
-                                // this DWARF, see if we have a declaration anywhere    
-                                // else...
-                                type_sp = m_debug_map_symfile->FindDefinitionTypeForDIE (dwarf_cu, die, type_name_const_str);
-                            }
-
+                            // We have already parsed this type or from another 
+                            // compile unit. GCC loves to use the "one definition
+                            // rule" which can result in multiple definitions
+                            // of the same class over and over in each compile
+                            // unit.
+                            type_sp = unique_ast_entry.m_type_sp;
                             if (type_sp)
                             {
-                                // We found a real definition for this type elsewhere
-                                // so lets use it and cache the fact that we found
-                                // a complete type for this die
                                 m_die_to_type[die] = type_sp.get();
                                 return type_sp;
                             }
                         }
-                        assert (tag_decl_kind != -1);
-                        bool clang_type_was_created = false;
-                        clang_type = m_forward_decl_die_to_clang_type.lookup (die);
-                        if (clang_type == NULL)
+                    }
+                    
+                    DEBUG_PRINTF ("0x%8.8x: %s (\"%s\")\n", die->GetOffset(), DW_TAG_value_to_name(tag), type_name_cstr);
+
+                    int tag_decl_kind = -1;
+                    AccessType default_accessibility = eAccessNone;
+                    if (tag == DW_TAG_structure_type)
+                    {
+                        tag_decl_kind = clang::TTK_Struct;
+                        default_accessibility = eAccessPublic;
+                    }
+                    else if (tag == DW_TAG_union_type)
+                    {
+                        tag_decl_kind = clang::TTK_Union;
+                        default_accessibility = eAccessPublic;
+                    }
+                    else if (tag == DW_TAG_class_type)
+                    {
+                        tag_decl_kind = clang::TTK_Class;
+                        default_accessibility = eAccessPrivate;
+                    }
+
+
+                    if (is_forward_declaration)
+                    {
+                        // We have a forward declaration to a type and we need
+                        // to try and find a full declaration. We look in the
+                        // current type index just in case we have a forward
+                        // declaration followed by an actual declarations in the
+                        // DWARF. If this fails, we need to look elsewhere...
+                    
+                        type_sp = FindDefinitionTypeForDIE (dwarf_cu, die, type_name_const_str);
+
+                        if (!type_sp && m_debug_map_symfile)
                         {
-                            clang_type_was_created = true;
-                            clang_type = ast.CreateRecordType (type_name_cstr, 
-                                                               tag_decl_kind, 
-                                                               GetClangDeclContextForDIE (dwarf_cu, die), 
-                                                               class_language);
+                            // We weren't able to find a full declaration in
+                            // this DWARF, see if we have a declaration anywhere    
+                            // else...
+                            type_sp = m_debug_map_symfile->FindDefinitionTypeForDIE (dwarf_cu, die, type_name_const_str);
                         }
 
-                        // Store a forward declaration to this class type in case any 
-                        // parameters in any class methods need it for the clang 
-                        // types for function prototypes. 
-                        m_die_to_decl_ctx[die] = ClangASTContext::GetDeclContextForType (clang_type);
-                        type_sp.reset (new Type (die->GetOffset(), 
-                                                 this, 
-                                                 type_name_const_str, 
-                                                 byte_size, 
-                                                 NULL, 
-                                                 LLDB_INVALID_UID, 
-                                                 Type::eEncodingIsUID, 
-                                                 &decl, 
-                                                 clang_type, 
-                                                 Type::eResolveStateForward));
-
-                        m_die_to_type[die] = type_sp.get();
-
-                        // Add our type to the unique type map so we don't
-                        // end up creating many copies of the same type over
-                        // and over in the ASTContext for our module
-//                        unique_ast_entry.m_type_sp = type_sp;
-//                        unique_ast_entry.m_die = die;
-//                        unique_ast_entry.m_declaration = decl;
-//                        m_unique_ast_type_map.Insert (type_name_const_str, 
-//                                                      unique_ast_entry);
-                        
-                        if (die->HasChildren() == false && is_forward_declaration == false)
+                        if (type_sp)
                         {
-                            // No children for this struct/union/class, lets finish it
-                            ast.StartTagDeclarationDefinition (clang_type);
-                            ast.CompleteTagDeclarationDefinition (clang_type);
+                            // We found a real definition for this type elsewhere
+                            // so lets use it and cache the fact that we found
+                            // a complete type for this die
+                            m_die_to_type[die] = type_sp.get();
+                            return type_sp;
                         }
-                        else if (clang_type_was_created)
-                        {
-                            // Leave this as a forward declaration until we need
-                            // to know the details of the type. lldb_private::Type
-                            // will automatically call the SymbolFile virtual function
-                            // "SymbolFileDWARF::ResolveClangOpaqueTypeDefinition(Type *)"
-                            // When the definition needs to be defined.
-                            m_forward_decl_die_to_clang_type[die] = clang_type;
-                            m_forward_decl_clang_type_to_die[ClangASTType::RemoveFastQualifiers (clang_type)] = die;
-                            ClangASTContext::SetHasExternalStorage (clang_type, true);
-                        }
+                    }
+                    assert (tag_decl_kind != -1);
+                    bool clang_type_was_created = false;
+                    clang_type = m_forward_decl_die_to_clang_type.lookup (die);
+                    if (clang_type == NULL)
+                    {
+                        clang_type_was_created = true;
+                        clang_type = ast.CreateRecordType (type_name_cstr, 
+                                                           tag_decl_kind, 
+                                                           GetClangDeclContextForDIE (dwarf_cu, die), 
+                                                           class_language);
+                    }
+
+                    // Store a forward declaration to this class type in case any 
+                    // parameters in any class methods need it for the clang 
+                    // types for function prototypes. 
+                    m_die_to_decl_ctx[die] = ClangASTContext::GetDeclContextForType (clang_type);
+                    type_sp.reset (new Type (die->GetOffset(), 
+                                             this, 
+                                             type_name_const_str, 
+                                             byte_size, 
+                                             NULL, 
+                                             LLDB_INVALID_UID, 
+                                             Type::eEncodingIsUID, 
+                                             &decl, 
+                                             clang_type, 
+                                             Type::eResolveStateForward));
+
+
+                    // Add our type to the unique type map so we don't
+                    // end up creating many copies of the same type over
+                    // and over in the ASTContext for our module
+                    unique_ast_entry.m_type_sp = type_sp;
+                    unique_ast_entry.m_die = die;
+                    unique_ast_entry.m_declaration = decl;
+                    GetUniqueDWARFASTTypeMap().Insert (type_name_const_str, 
+                                                       unique_ast_entry);
+                    
+                    if (die->HasChildren() == false && is_forward_declaration == false)
+                    {
+                        // No children for this struct/union/class, lets finish it
+                        ast.StartTagDeclarationDefinition (clang_type);
+                        ast.CompleteTagDeclarationDefinition (clang_type);
+                    }
+                    else if (clang_type_was_created)
+                    {
+                        // Leave this as a forward declaration until we need
+                        // to know the details of the type. lldb_private::Type
+                        // will automatically call the SymbolFile virtual function
+                        // "SymbolFileDWARF::ResolveClangOpaqueTypeDefinition(Type *)"
+                        // When the definition needs to be defined.
+                        m_forward_decl_die_to_clang_type[die] = clang_type;
+                        m_forward_decl_clang_type_to_die[ClangASTType::RemoveFastQualifiers (clang_type)] = die;
+                        ClangASTContext::SetHasExternalStorage (clang_type, true);
                     }
                 }
                 break;
@@ -3380,8 +3385,6 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                                                  &decl, 
                                                  clang_type, 
                                                  Type::eResolveStateForward));
-                        
-                        m_die_to_type[die] = type_sp.get();
 
 #if LEAVE_ENUMS_FORWARD_DECLARED
                         // Leave this as a forward declaration until we need
@@ -3652,9 +3655,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                                              Type::eEncodingIsUID, 
                                              &decl, 
                                              clang_type, 
-                                             Type::eResolveStateFull));
-                    
-                    m_die_to_type[die] = type_sp.get();
+                                             Type::eResolveStateFull));                    
                     assert(type_sp.get());
                 }
                 break;
@@ -3723,7 +3724,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                                 element_orders.push_back (1);
                             if (byte_stride == 0 && bit_stride == 0)
                                 byte_stride = element_type->GetByteSize();
-                            clang_type_t array_element_type = element_type->GetClangType();
+                            clang_type_t array_element_type = element_type->GetClangFullType();
                             uint64_t array_element_bit_stride = byte_stride * 8 + bit_stride;
                             uint64_t num_elements = 0;
                             std::vector<uint64_t>::const_reverse_iterator pos;
@@ -3749,7 +3750,6 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                                                      clang_type, 
                                                      Type::eResolveStateFull));
                             type_sp->SetEncodingType (element_type);
-                            m_die_to_type[die] = type_sp.get();
                         }
                     }
                 }
@@ -3802,7 +3802,6 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                                                  NULL, 
                                                  clang_type, 
                                                  Type::eResolveStateForward));
-                        m_die_to_type[die] = type_sp.get();
                     }
                                             
                     break;
@@ -3834,20 +3833,10 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                     type_sp->SetSymbolContextScope(symbol_context_scope);
                 }
 
-//              if (udt_sp.get())
-//              {
-//                  if (is_forward_declaration)
-//                      udt_sp->GetFlags().Set(UserDefType::flagIsForwardDefinition);
-//                  type_sp->SetUserDefinedType(udt_sp);
-//              }
+                // We are ready to put this type into the uniqued list up at the module level
+                type_list->Insert (type_sp);
 
-                if (type_sp.unique())
-                {
-                    // We are ready to put this type into the uniqued list up at the module level
-                    type_list->Insert (type_sp);
-
-                    m_die_to_type[die] = type_sp.get();
-                }
+                m_die_to_type[die] = type_sp.get();
             }
         }
         else if (type_ptr != DIE_IS_BEING_PARSED)

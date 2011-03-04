@@ -198,11 +198,10 @@ ScriptInterpreterPython::ScriptInterpreterPython (CommandInterpreter &interprete
     ScriptInterpreter (interpreter, eScriptLanguagePython),
     m_embedded_python_pty (),
     m_embedded_thread_input_reader_sp (),
-    m_dbg_stdout (interpreter.GetDebugger().GetOutputFileHandle()),
+    m_dbg_stdout (interpreter.GetDebugger().GetOutputFile().GetStream()),
     m_new_sysout (NULL),
     m_dictionary_name (interpreter.GetDebugger().GetInstanceName().AsCString()),
-    m_termios (),
-    m_termios_valid (false),
+    m_terminal_state (),
     m_session_is_active (false),
     m_pty_slave_is_open (false),
     m_valid_session (true)
@@ -342,6 +341,28 @@ ScriptInterpreterPython::ResetOutputFileHandle (FILE *fh)
         LeaveSession ();
     }
 }
+
+void
+ScriptInterpreterPython::SaveTerminalState (int fd)
+{
+    // Python mucks with the terminal state of STDIN. If we can possibly avoid
+    // this by setting the file handles up correctly prior to entering the
+    // interpreter we should. For now we save and restore the terminal state
+    // on the input file handle.
+    m_terminal_state.Save (fd, false);
+}
+
+void
+ScriptInterpreterPython::RestoreTerminalState ()
+{
+    // Python mucks with the terminal state of STDIN. If we can possibly avoid
+    // this by setting the file handles up correctly prior to entering the
+    // interpreter we should. For now we save and restore the terminal state
+    // on the input file handle.
+    m_terminal_state.Restore();
+}
+
+
 
 void
 ScriptInterpreterPython::LeaveSession ()
@@ -549,33 +570,26 @@ ScriptInterpreterPython::InputReaderCallback
     if (script_interpreter->m_script_lang != eScriptLanguagePython)
         return 0;
     
-    FILE *out_fh = reader.GetDebugger().GetOutputFileHandle ();
-    if (out_fh == NULL)
-        out_fh = stdout;
+    File &out_file = reader.GetDebugger().GetOutputFile();
 
     switch (notification)
     {
     case eInputReaderActivate:
         {
-            if (out_fh)
-            {
-                ::fprintf (out_fh, "Python Interactive Interpreter. To exit, type 'quit()', 'exit()' or Ctrl-D.\n");
-            }
+            out_file.Printf ("Python Interactive Interpreter. To exit, type 'quit()', 'exit()' or Ctrl-D.\n");
+
             // Save terminal settings if we can
-            int input_fd;
-            FILE *input_fh = reader.GetDebugger().GetInputFileHandle();
-            if (input_fh != NULL)
-                input_fd = ::fileno (input_fh);
-            else
+            int input_fd = reader.GetDebugger().GetInputFile().GetDescriptor();
+            if (input_fd == File::kInvalidDescriptor)
                 input_fd = STDIN_FILENO;
 
-            script_interpreter->m_termios_valid = ::tcgetattr (input_fd, &script_interpreter->m_termios) == 0;
-            
+            script_interpreter->SaveTerminalState(input_fd);
+
             if (!CurrentThreadHasPythonLock())
             {
                 while (!GetPythonLock(1)) 
                 {
-                    ::fprintf (out_fh, "Python interpreter locked on another thread; waiting to acquire lock...\n");
+                    out_file.Printf ("Python interpreter locked on another thread; waiting to acquire lock...\n");
                 }
                 script_interpreter->EnterSession ();
                 ReleasePythonLock();
@@ -593,7 +607,7 @@ ScriptInterpreterPython::InputReaderCallback
                 embedded_interpreter_thread = Host::ThreadCreate ("<lldb.script-interpreter.embedded-python-loop>",
                                                                   ScriptInterpreterPython::RunEmbeddedPythonInterpreter,
                                                                   script_interpreter, NULL);
-                if (embedded_interpreter_thread != LLDB_INVALID_HOST_THREAD)
+                if (IS_VALID_LLDB_HOST_THREAD(embedded_interpreter_thread))
                 {
                     if (log)
                         log->Printf ("ScriptInterpreterPython::InputReaderCallback, Activate, succeeded in creating thread (thread = %d)", embedded_interpreter_thread);
@@ -674,17 +688,9 @@ ScriptInterpreterPython::InputReaderCallback
         // Restore terminal settings if they were validly saved
         if (log)
             log->Printf ("ScriptInterpreterPython::InputReaderCallback, Done, closing down input reader.");
-        if (script_interpreter->m_termios_valid)
-        {
-            int input_fd;
-            FILE *input_fh = reader.GetDebugger().GetInputFileHandle();
-            if (input_fh != NULL)
-                input_fd = ::fileno (input_fh);
-            else
-                input_fd = STDIN_FILENO;
             
-            ::tcsetattr (input_fd, TCSANOW, &script_interpreter->m_termios);
-        }
+        script_interpreter->RestoreTerminalState ();
+
         script_interpreter->m_embedded_python_pty.CloseMasterFileDescriptor();
         break;
     }
@@ -705,7 +711,7 @@ ScriptInterpreterPython::ExecuteInterpreterLoop ()
     // try to embed a running interpreter loop inside the already running Python interpreter loop, so we won't
     // do it.
 
-    if (debugger.GetInputFileHandle() == NULL)
+    if (!debugger.GetInputFile().IsValid())
         return;
 
     InputReaderSP reader_sp (new InputReader(debugger));
@@ -1022,21 +1028,19 @@ ScriptInterpreterPython::GenerateBreakpointOptionsCommandCallback
 {
   static StringList commands_in_progress;
 
-    FILE *out_fh = reader.GetDebugger().GetOutputFileHandle();
-    if (out_fh == NULL)
-        out_fh = stdout;
+    File &out_file = reader.GetDebugger().GetOutputFile();
 
     switch (notification)
     {
     case eInputReaderActivate:
         {
             commands_in_progress.Clear();
-            if (out_fh)
+            if (out_file.IsValid())
             {
-                ::fprintf (out_fh, "%s\n", g_reader_instructions);
+                out_file.Printf ("%s\n", g_reader_instructions);
                 if (reader.GetPrompt())
-                    ::fprintf (out_fh, "%s", reader.GetPrompt());
-                ::fflush (out_fh);
+                    out_file.Printf ("%s", reader.GetPrompt());
+                out_file.Flush ();
             }
         }
         break;
@@ -1045,10 +1049,10 @@ ScriptInterpreterPython::GenerateBreakpointOptionsCommandCallback
         break;
 
     case eInputReaderReactivate:
-        if (reader.GetPrompt() && out_fh)
+        if (reader.GetPrompt() && out_file.IsValid())
         {
-            ::fprintf (out_fh, "%s", reader.GetPrompt());
-            ::fflush (out_fh);
+            out_file.Printf ("%s", reader.GetPrompt());
+            out_file.Flush ();
         }
         break;
 
@@ -1056,10 +1060,10 @@ ScriptInterpreterPython::GenerateBreakpointOptionsCommandCallback
         {
             std::string temp_string (bytes, bytes_len);
             commands_in_progress.AppendString (temp_string.c_str());
-            if (out_fh && !reader.IsDone() && reader.GetPrompt())
+            if (out_file.IsValid() && !reader.IsDone() && reader.GetPrompt())
             {
-                ::fprintf (out_fh, "%s", reader.GetPrompt());
-                ::fflush (out_fh);
+                out_file.Printf ("%s", reader.GetPrompt());
+                out_file.Flush ();
             }
         }
         break;
@@ -1095,7 +1099,7 @@ ScriptInterpreterPython::GenerateBreakpointOptionsCommandCallback
                         }
                     }
                     else
-                        ::fprintf (out_fh, "Warning: No command attached to breakpoint.\n");
+                        out_file.Printf ("Warning: No command attached to breakpoint.\n");
                 }
                 else
                 {
@@ -1428,13 +1432,12 @@ ScriptInterpreterPython::RunEmbeddedPythonInterpreter (lldb::thread_arg_t baton)
 void
 ScriptInterpreterPython::Initialize ()
 {
-
     Timer scoped_timer (__PRETTY_FUNCTION__, __PRETTY_FUNCTION__);
 
-    int input_fd = STDIN_FILENO;
-
-    struct termios stdin_termios;
-    bool valid_termios = ::tcgetattr (input_fd, &stdin_termios) == 0;
+    // Python will muck with STDIN terminal state, so save off any current TTY
+    // settings so we can restore them.
+    TerminalState stdin_tty_state;
+    stdin_tty_state.Save(STDIN_FILENO, false);
 
     // Find the module that owns this code and use that path we get to
     // set the PYTHONPATH appropriately.
@@ -1511,9 +1514,8 @@ ScriptInterpreterPython::Initialize ()
         PyRun_SimpleString ("from termios import *");
         Py_DECREF (pmod);
     }
-    
-    if (valid_termios)
-        ::tcsetattr (input_fd, TCSANOW, &stdin_termios);
+
+    stdin_tty_state.Restore();
 }
 
 void

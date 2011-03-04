@@ -27,7 +27,7 @@
 
 #include "lldb/Breakpoint/WatchpointLocation.h"
 #include "lldb/Core/ArchSpec.h"
-#include "lldb/Core/FileSpec.h"
+#include "lldb/Host/FileSpec.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/State.h"
@@ -234,8 +234,7 @@ ProcessMacOSX::ProcessMacOSX(Target& target, Listener &listener) :
     m_stdout_data (),
     m_exception_messages (),
     m_exception_messages_mutex (Mutex::eMutexTypeRecursive),
-    m_arch_spec (),
-    m_dynamic_loader_ap ()
+    m_arch_spec ()
 {
 }
 
@@ -338,7 +337,9 @@ ProcessMacOSX::DoLaunch
         // Set our user ID to an invalid process ID.
         SetID (LLDB_INVALID_PROCESS_ID);
         error.SetErrorToGenericError ();
-        error.SetErrorStringWithFormat("Failed to get object file from '%s' for arch %s.\n", module->GetFileSpec().GetFilename().AsCString(), module->GetArchitecture().AsCString());
+        error.SetErrorStringWithFormat("Failed to get object file from '%s' for arch %s.\n", 
+                                       module->GetFileSpec().GetFilename().AsCString(), 
+                                       module->GetArchitecture().GetArchitectureName());
     }
 
     // Return the process ID we have
@@ -414,14 +415,7 @@ ProcessMacOSX::DoAttachToProcessWithID (lldb::pid_t attach_pid)
 Error
 ProcessMacOSX::WillLaunchOrAttach ()
 {
-    Error error;
-    // TODO: this is hardcoded for macosx right now. We need this to be more dynamic
-    m_dynamic_loader_ap.reset(DynamicLoader::FindPlugin(this, "dynamic-loader.macosx-dyld"));
-
-    if (m_dynamic_loader_ap.get() == NULL)
-        error.SetErrorString("unable to find the dynamic loader named 'dynamic-loader.macosx-dyld'");
-    
-    return error;
+    return Error();
 }
 
 
@@ -434,48 +428,15 @@ ProcessMacOSX::WillLaunch (Module* module)
 void
 ProcessMacOSX::DidLaunchOrAttach ()
 {
-    if (GetID() == LLDB_INVALID_PROCESS_ID)
-    {
-        m_dynamic_loader_ap.reset();
-    }
-    else
+    if (GetID() != LLDB_INVALID_PROCESS_ID)
     {
         Module * exe_module = GetTarget().GetExecutableModule ().get();
         assert (exe_module);
 
-        m_arch_spec = exe_module->GetArchitecture();
-        assert (m_arch_spec.IsValid());
-
-        ObjectFile *exe_objfile = exe_module->GetObjectFile();
-        assert (exe_objfile);
-
-        m_byte_order = exe_objfile->GetByteOrder();
-        assert (m_byte_order != eByteOrderInvalid);
         // Install a signal handler so we can catch when our child process
         // dies and set the exit status correctly.
 
         m_monitor_thread = Host::StartMonitoringChildProcess (Process::SetProcessExitStatus, NULL, GetID(), false);
-
-        if (m_arch_spec == ArchSpec("arm"))
-        {
-            // On ARM we want the actual target triple of the OS to get the
-            // most capable ARM slice for the process. Since this plug-in is
-            // only used for doing native debugging this will work.
-            m_target_triple = Host::GetTargetTriple();
-        }
-        else
-        {
-            // We want the arch of the process, and the vendor and OS from the
-            // host OS.
-            StreamString triple;
-
-            triple.Printf("%s-%s-%s", 
-                          m_arch_spec.AsCString(), 
-                          Host::GetVendorString().AsCString("apple"), 
-                          Host::GetOSString().AsCString("darwin"));
-
-            m_target_triple.SetCString(triple.GetString().c_str());
-        }
     }
 }
 
@@ -484,16 +445,12 @@ ProcessMacOSX::DidLaunch ()
 {
     ProcessMacOSXLog::LogIf (PD_LOG_PROCESS, "ProcessMacOSX::DidLaunch()");
     DidLaunchOrAttach ();
-    if (m_dynamic_loader_ap.get())
-        m_dynamic_loader_ap->DidLaunch();
 }
 
 void
 ProcessMacOSX::DidAttach ()
 {
     DidLaunchOrAttach ();
-    if (m_dynamic_loader_ap.get())
-        m_dynamic_loader_ap->DidAttach();
 }
 
 Error
@@ -543,16 +500,16 @@ ProcessMacOSX::GetSoftwareBreakpointTrapOpcode (BreakpointSite* bp_site)
     static const uint8_t g_ppc_breakpoint_opcode[] = { 0x7F, 0xC0, 0x00, 0x08 };
     static const uint8_t g_i386_breakpoint_opcode[] = { 0xCC };
 
-    ArchSpec::CPU arch_cpu = m_arch_spec.GetGenericCPUType();
-    switch (arch_cpu)
+    llvm::Triple::ArchType machine = m_arch_spec.GetMachine();
+    switch (machine)
     {
-    case ArchSpec::eCPU_i386:
-    case ArchSpec::eCPU_x86_64:
+    case llvm::Triple::x86:
+    case llvm::Triple::x86_64:
         trap_opcode = g_i386_breakpoint_opcode;
         trap_opcode_size = sizeof(g_i386_breakpoint_opcode);
         break;
     
-    case ArchSpec::eCPU_arm:
+    case llvm::Triple::arm:
         // TODO: fill this in for ARM. We need to dig up the symbol for
         // the address in the breakpoint locaiton and figure out if it is
         // an ARM or Thumb breakpoint.
@@ -560,8 +517,8 @@ ProcessMacOSX::GetSoftwareBreakpointTrapOpcode (BreakpointSite* bp_site)
         trap_opcode_size = sizeof(g_arm_breakpoint_opcode);
         break;
     
-    case ArchSpec::eCPU_ppc:
-    case ArchSpec::eCPU_ppc64:
+    case llvm::Triple::ppc:
+    case llvm::Triple::ppc64:
         trap_opcode = g_ppc_breakpoint_opcode;
         trap_opcode_size = sizeof(g_ppc_breakpoint_opcode);
         break;
@@ -883,12 +840,6 @@ ProcessMacOSX::DoDestroy ()
     return error;
 }
 
-ByteOrder
-ProcessMacOSX::GetByteOrder () const
-{
-    return m_byte_order;
-}
-
 //------------------------------------------------------------------
 // Process Queries
 //------------------------------------------------------------------
@@ -903,12 +854,6 @@ lldb::addr_t
 ProcessMacOSX::GetImageInfoAddress()
 {
     return Task().GetDYLDAllImageInfosAddress();
-}
-
-DynamicLoader *
-ProcessMacOSX::GetDynamicLoader()
-{
-    return m_dynamic_loader_ap.get();
 }
 
 //------------------------------------------------------------------
@@ -1167,7 +1112,7 @@ ProcessMacOSX::Clear()
         m_exception_messages.clear();
     }
 
-    if (m_monitor_thread != LLDB_INVALID_HOST_THREAD)
+    if (IS_VALID_LLDB_HOST_THREAD(m_monitor_thread))
     {
         Host::ThreadCancel (m_monitor_thread, NULL);
         thread_result_t thread_result;
@@ -1180,6 +1125,9 @@ ProcessMacOSX::Clear()
 bool
 ProcessMacOSX::StartSTDIOThread()
 {
+    if (IS_VALID_LLDB_HOST_THREAD(m_stdio_thread))
+        return true;
+
     // If we created and own the child STDIO file handles, then we track the
     // STDIO ourselves, else we let whomever owns these file handles track
     // the IO themselves.
@@ -1188,7 +1136,7 @@ ProcessMacOSX::StartSTDIOThread()
         ProcessMacOSXLog::LogIf (PD_LOG_PROCESS, "ProcessMacOSX::%s ( )", __FUNCTION__);
         // Create the thread that watches for the child STDIO
         m_stdio_thread = Host::ThreadCreate ("<lldb.process.process-macosx.stdio>", ProcessMacOSX::STDIOThread, this, NULL);
-        return m_stdio_thread != LLDB_INVALID_HOST_THREAD;
+        return IS_VALID_LLDB_HOST_THREAD(m_stdio_thread);
     }
     return false;
 }
@@ -1199,7 +1147,7 @@ ProcessMacOSX::StopSTDIOThread(bool close_child_fds)
 {
     ProcessMacOSXLog::LogIf (PD_LOG_PROCESS, "ProcessMacOSX::%s ( )", __FUNCTION__);
     // Stop the stdio thread
-    if (m_stdio_thread != LLDB_INVALID_HOST_THREAD)
+    if (IS_VALID_LLDB_HOST_THREAD(m_stdio_thread))
     {
         Host::ThreadCancel (m_stdio_thread, NULL);
         thread_result_t result = NULL;
@@ -1726,19 +1674,16 @@ ProcessMacOSX::PosixSpawnChildForPTraceDebugging
     // We don't need to do this for ARM, and we really shouldn't now that we
     // have multiple CPU subtypes and no posix_spawnattr call that allows us
     // to set which CPU subtype to launch...
-    if (arch_spec.GetType() == eArchTypeMachO)
+    cpu_type_t cpu = arch_spec.GetMachOCPUType();
+    if (cpu != 0 && cpu != UINT32_MAX && cpu != LLDB_INVALID_CPUTYPE)
     {
-        cpu_type_t cpu = arch_spec.GetCPUType();
-        if (cpu != 0 && cpu != UINT32_MAX && cpu != LLDB_INVALID_CPUTYPE)
-        {
-            size_t ocount = 0;
-            err.SetError( ::posix_spawnattr_setbinpref_np (&attr, 1, &cpu, &ocount), eErrorTypePOSIX);
-            if (err.Fail() || log)
-                err.PutToLog(log.get(), "::posix_spawnattr_setbinpref_np ( &attr, 1, cpu_type = 0x%8.8x, count => %zu )", cpu, ocount);
+        size_t ocount = 0;
+        err.SetError( ::posix_spawnattr_setbinpref_np (&attr, 1, &cpu, &ocount), eErrorTypePOSIX);
+        if (err.Fail() || log)
+            err.PutToLog(log.get(), "::posix_spawnattr_setbinpref_np ( &attr, 1, cpu_type = 0x%8.8x, count => %zu )", cpu, ocount);
 
-            if (err.Fail() != 0 || ocount != 1)
-                return LLDB_INVALID_PROCESS_ID;
-        }
+        if (err.Fail() != 0 || ocount != 1)
+            return LLDB_INVALID_PROCESS_ID;
     }
 
 #endif

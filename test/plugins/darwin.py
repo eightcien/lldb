@@ -97,7 +97,7 @@ def buildDwarf(sender=None, architecture=None, compiler=None, dictionary=None):
                      + getCmdLine(dictionary)],
                     sender=sender)
 
-    # True signifies that we can handle building dsym.
+    # True signifies that we can handle building dwarf.
     return True
 
 def cleanup(sender=None, dictionary=None):
@@ -106,5 +106,5 @@ def cleanup(sender=None, dictionary=None):
         lldbtest.system(["/bin/sh", "-c", "make clean"+getCmdLine(dictionary)],
                         sender=sender)
 
-    # True signifies that we can handle building dsym.
+    # True signifies that we can handle cleanup.
     return True

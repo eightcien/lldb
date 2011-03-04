@@ -14,7 +14,7 @@
 // Other libraries and framework includes
 // Project includes
 #include "lldb/Core/Debugger.h"
-#include "lldb/Core/FileSpec.h"
+#include "lldb/Host/FileSpec.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/RegularExpression.h"
 #include "lldb/Core/Stream.h"
@@ -42,9 +42,9 @@ DumpModuleArchitecture (Stream &strm, Module *module, uint32_t width)
     if (module)
     {
         if (width)
-            strm.Printf("%-*s", width, module->GetArchitecture().AsCString());
+            strm.Printf("%-*s", width, module->GetArchitecture().GetArchitectureName());
         else
-            strm.PutCString(module->GetArchitecture().AsCString());
+            strm.PutCString(module->GetArchitecture().GetArchitectureName());
     }
 }
 
@@ -183,7 +183,7 @@ DumpModuleSections (CommandInterpreter &interpreter, Stream &strm, Module *modul
             {
                 strm.PutCString ("Sections for '");
                 strm << module->GetFileSpec();
-                strm.Printf ("' (%s):\n", module->GetArchitecture().AsCString());
+                strm.Printf ("' (%s):\n", module->GetArchitecture().GetArchitectureName());
                 strm.IndentMore();
                 section_list->Dump(&strm, interpreter.GetDebugger().GetExecutionContext().target, true, UINT32_MAX);
                 strm.IndentLess();
@@ -248,7 +248,10 @@ LookupAddressInModule
         so_addr.Dump (&strm, exe_scope, Address::DumpStyleSectionNameOffset);
         strm.EOL();
         strm.Indent ("    Summary: ");
+        const uint32_t save_indent = strm.GetIndentLevel ();
+        strm.SetIndentLevel (save_indent + 11);
         so_addr.Dump (&strm, exe_scope, Address::DumpStyleResolvedDescription);
+        strm.SetIndentLevel (save_indent);
         strm.EOL();
         // Print out detailed address information when verbose is enabled
         if (verbose)
@@ -339,7 +342,7 @@ DumpSymbolContextList (CommandInterpreter &interpreter, Stream &strm, SymbolCont
                     int addr_size = sizeof (addr_t);
                     Process *process = interpreter.GetDebugger().GetExecutionContext().process;
                     if (process)
-                        addr_size = process->GetAddressByteSize();
+                        addr_size = process->GetTarget().GetArchitecture().GetAddressByteSize();
                     if (vm_addr != LLDB_INVALID_ADDRESS)
                         strm.Address (vm_addr, addr_size);
                     else
@@ -439,7 +442,7 @@ LookupTypeInModule
                     {
                         // Resolve the clang type so that any forward references
                         // to types that haven't yet been parsed will get parsed.
-                        type_sp->GetClangType ();
+                        type_sp->GetClangFullType ();
                         type_sp->GetDescription (&strm, eDescriptionLevelFull, true);
                     }
                     strm.EOL();
@@ -781,7 +784,7 @@ protected:
     CommandOptions m_options;
 };
 
-lldb::OptionEnumValueElement
+static lldb::OptionEnumValueElement
 g_sort_option_enumeration[4] =
 {
     { eSortOrderNone,       "none",     "No sorting, use the original symbol table order."},

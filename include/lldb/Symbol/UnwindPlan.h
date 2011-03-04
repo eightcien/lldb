@@ -25,13 +25,13 @@ namespace lldb_private {
 
 // Internally, the UnwindPlan is structured as a vector of register locations
 // organized by code address in the function, showing which registers have been
-// saved at that point and where they are saved.  
-// It can be thought of as the expanded table form of the DWARF CFI 
+// saved at that point and where they are saved.
+// It can be thought of as the expanded table form of the DWARF CFI
 // encoded information.
 
 // Other unwind information sources will be converted into UnwindPlans before
-// being added to a FuncUnwinders object.  The unwind source may be 
-// an eh_frame FDE, a DWARF debug_frame FDE, or assembly language based 
+// being added to a FuncUnwinders object.  The unwind source may be
+// an eh_frame FDE, a DWARF debug_frame FDE, or assembly language based
 // prologue analysis.
 // The UnwindPlan is the canonical form of this information that the unwinder
 // code will use when walking the stack.
@@ -44,11 +44,11 @@ public:
         class RegisterLocation
         {
         public:
-    
+
             enum RestoreType
                 {
-                    unspecified,        // not specified, we may be able to assume this 
-                                        // is the same register. gcc doesn't specify all 
+                    unspecified,        // not specified, we may be able to assume this
+                                        // is the same register. gcc doesn't specify all
                                         // initial values so we really don't know...
                     isUndefined,        // reg is not available, e.g. volatile reg
                     isSame,             // reg is unchanged
@@ -58,18 +58,18 @@ public:
                     atDWARFExpression,  // reg = deref(eval(dwarf_expr))
                     isDWARFExpression   // reg = eval(dwarf_expr)
                 };
-    
+
             RegisterLocation() : m_type(unspecified), m_location() { }
-    
+
             bool
             operator == (const RegisterLocation& rhs) const;
-    
+
             void SetUnspecified();
 
             void SetUndefined();
-    
+
             void SetSame();
-    
+
             bool IsSame () const { return m_type == isSame; }
 
             bool IsUnspecified () const { return m_type == unspecified; }
@@ -85,22 +85,22 @@ public:
             bool IsDWARFExpression () const { return m_type == isDWARFExpression; }
 
             void SetAtCFAPlusOffset (int32_t offset);
-    
+
             void SetIsCFAPlusOffset (int32_t offset);
-    
+
             void SetInRegister (uint32_t reg_num);
-    
+
             uint32_t GetRegisterNumber () const { return m_location.reg_num; }
 
             RestoreType GetLocationType () const { return m_type; }
 
             int32_t GetOffset () const { return m_location.offset; }
-            
+
             void GetDWARFExpr (const uint8_t **opcodes, uint16_t& len) const { *opcodes = m_location.expr.opcodes; len = m_location.expr.length; }
 
             void
             SetAtDWARFExpression (const uint8_t *opcodes, uint32_t len);
-    
+
             void
             SetIsDWARFExpression (const uint8_t *opcodes, uint32_t len);
 
@@ -128,16 +128,16 @@ public:
                 } expr;
             } m_location;
         };
-    
+
     public:
         Row ();
-    
+
         bool
         GetRegisterInfo (uint32_t reg_num, RegisterLocation& register_location) const;
-    
+
         void
         SetRegisterInfo (uint32_t reg_num, const RegisterLocation register_location);
-    
+
         lldb::addr_t
         GetOffset() const
         {
@@ -179,7 +179,7 @@ public:
         {
             m_cfa_offset = offset;
         }
-    
+
         // Return the number of registers we have locations for
         int
         GetRegisterCount () const
@@ -204,18 +204,22 @@ public:
 
 public:
 
-    UnwindPlan () : 
-        m_row_list(), 
-        m_plan_valid_address_range(),
-        m_register_kind(-1), 
-        m_source_name()
-    { 
-        m_plan_valid_address_range.SetByteSize (0);
+    UnwindPlan () :
+        m_row_list (),
+        m_plan_valid_address_range (),
+        m_register_kind (UINT32_MAX),
+        m_source_name ()
+    {
     }
 
-    void Dump (Stream& s, Thread* thread) const;
+    ~UnwindPlan ()
+	{
+	}
 
-    void 
+    void
+    Dump (Stream& s, Thread* thread) const;
+
+    void
     AppendRow (const Row& row);
 
     // Returns a pointer to the best row for the given offset into the function's instructions.
@@ -231,8 +235,8 @@ public:
     uint32_t
     GetRegisterKind (void) const;
 
-    // This UnwindPlan may not be valid at every address of the function span.  
-    // For instance, a FastUnwindPlan will not be valid at the prologue setup 
+    // This UnwindPlan may not be valid at every address of the function span.
+    // For instance, a FastUnwindPlan will not be valid at the prologue setup
     // instructions - only in the body of the function.
     void
     SetPlanValidAddressRange (const AddressRange& range);

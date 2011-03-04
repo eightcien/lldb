@@ -19,6 +19,7 @@
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/Section.h"
 #include "lldb/Core/Stream.h"
+#include "lldb/Host/Host.h"
 
 #define CASE_AND_STREAM(s, def, width)                  \
     case def: s->Printf("%-*s", width, #def); break;
@@ -73,8 +74,9 @@ ObjectFileELF::CreateInstance(Module *module,
             {
                 std::auto_ptr<ObjectFileELF> objfile_ap(
                     new ObjectFileELF(module, data_sp, file, offset, length));
-                ArchSpec spec = objfile_ap->GetArchitecture();
-                if (spec.IsValid() && objfile_ap->SetModulesArchitecture(spec))
+                ArchSpec spec;
+                if (objfile_ap->GetArchitecture(spec) &&
+                    objfile_ap->SetModulesArchitecture(spec))
                     return objfile_ap.release();
             }
         }
@@ -82,14 +84,6 @@ ObjectFileELF::CreateInstance(Module *module,
     return NULL;
 }
 
-ArchSpec
-ObjectFileELF::GetArchitecture()
-{
-    if (!ParseHeader())
-        return ArchSpec();
-
-    return ArchSpec(eArchTypeELF, m_header.e_machine, m_header.e_flags);
-}
 
 //------------------------------------------------------------------
 // PluginInterface protocol
@@ -1043,40 +1037,14 @@ ObjectFileELF::DumpDependentModules(lldb_private::Stream *s)
 }
 
 bool
-ObjectFileELF::GetTargetTriple(ConstString &target_triple)
+ObjectFileELF::GetArchitecture (ArchSpec &arch)
 {
-    static ConstString g_target_triple;
+    if (!ParseHeader())
+        return false;
 
-    if (g_target_triple)
-    {
-        target_triple = g_target_triple;
-        return true;
-    }
-
-    std::string triple;
-    switch (m_header.e_machine)
-    {
-    default:
-        assert(false && "Unexpected machine type.");
-        break;
-    case EM_SPARC:  triple.assign("sparc-"); break;
-    case EM_386:    triple.assign("i386-"); break;
-    case EM_68K:    triple.assign("68k-"); break;
-    case EM_88K:    triple.assign("88k-"); break;
-    case EM_860:    triple.assign("i860-"); break;
-    case EM_MIPS:   triple.assign("mips-"); break;
-    case EM_PPC:    triple.assign("powerpc-"); break;
-    case EM_PPC64:  triple.assign("powerpc64-"); break;
-    case EM_ARM:    triple.assign("arm-"); break;
-    case EM_X86_64: triple.assign("x86_64-"); break;
-    }
-    // TODO: determine if there is a vendor in the ELF? Default to "linux" for now
-    triple += "linux-";
-    // TODO: determine if there is an OS in the ELF? Default to "gnu" for now
-    triple += "gnu";
-    g_target_triple.SetCString(triple.c_str());
-    target_triple = g_target_triple;
-
+    arch.SetArchitecture (lldb::eArchTypeELF, m_header.e_machine, LLDB_INVALID_CPUTYPE);
+    arch.GetTriple().setOSName (Host::GetOSString().GetCString());
+    arch.GetTriple().setVendorName(Host::GetVendorString().GetCString());
     return true;
 }
 

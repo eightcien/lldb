@@ -576,7 +576,7 @@ WAIT_AGAIN:
     // Finally, start monitoring the child process for change in state.
     m_monitor_thread = Host::StartMonitoringChildProcess(
         ProcessMonitor::MonitorCallback, this, GetPID(), true);
-    if (m_monitor_thread == LLDB_INVALID_HOST_THREAD)
+    if (!IS_VALID_LLDB_HOST_THREAD(m_monitor_thread))
     {
         error.SetErrorToGenericError();
         error.SetErrorString("Process launch failed.");
@@ -601,7 +601,7 @@ ProcessMonitor::StartOperationThread(LaunchArgs *args, Error &error)
 {
     static const char *g_thread_name = "lldb.process.linux.operation";
 
-    if (m_operation_thread != LLDB_INVALID_HOST_THREAD)
+    if (IS_VALID_LLDB_HOST_THREAD(m_operation_thread))
         return;
 
     m_operation_thread =
@@ -613,7 +613,7 @@ ProcessMonitor::StopOperationThread()
 {
     lldb::thread_result_t result;
 
-    if (m_operation_thread == LLDB_INVALID_HOST_THREAD)
+    if (!IS_VALID_LLDB_HOST_THREAD(m_operation_thread))
         return;
 
     Host::ThreadCancel(m_operation_thread, NULL);
@@ -1036,7 +1036,7 @@ ProcessMonitor::StopMonitoringChildProcess()
 {
     lldb::thread_result_t thread_result;
 
-    if (m_monitor_thread != LLDB_INVALID_HOST_THREAD)
+    if (IS_VALID_LLDB_HOST_THREAD(m_monitor_thread))
     {
         Host::ThreadCancel(m_monitor_thread, NULL);
         Host::ThreadJoin(m_monitor_thread, &thread_result, NULL);

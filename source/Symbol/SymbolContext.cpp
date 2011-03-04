@@ -133,29 +133,6 @@ SymbolContext::DumpStopContext
         if (function->GetMangled().GetName())
             function->GetMangled().GetName().Dump(s);
 
-        if (show_inlined_frames && block)
-        {
-            const InlineFunctionInfo *inline_info = block->GetInlinedFunctionInfo();
-            if (inline_info == NULL)
-            {
-                const Block *parent_inline_block = block->GetInlinedParent();
-                if (parent_inline_block)
-                    inline_info = parent_inline_block->GetInlinedFunctionInfo();
-            }
-
-            if (inline_info)
-            {
-                s->PutCString(" [inlined] ");
-                inline_info->GetName().Dump(s);
-                
-                if (line_entry.IsValid())
-                {
-                    s->PutCString(" at ");
-                    line_entry.DumpStopContext(s, show_fullpaths);
-                }
-                return;
-            }
-        }
         if (addr.IsValid())
         {
             const addr_t function_offset = addr.GetOffset() - function->GetAddressRange().GetBaseAddress().GetOffset();
@@ -205,7 +182,7 @@ SymbolContext::GetDescription(Stream *s, lldb::DescriptionLevel level, Target *t
         module_sp->GetFileSpec().Dump(s);
         *s << '"';
         if (module_sp->GetArchitecture().IsValid())
-            s->Printf (", arch = \"%s\"", module_sp->GetArchitecture().AsCString());
+            s->Printf (", arch = \"%s\"", module_sp->GetArchitecture().GetArchitectureName());
         s->EOL();
     }
 
@@ -455,6 +432,26 @@ SymbolContext::FindTypeByName (const ConstString &name) const
     
     return return_value;
 }
+
+//SymbolContext
+//SymbolContext::CreateSymbolContextFromDescription (lldb::TargetSP &target_sp,
+//                                    const char *module,
+//                                    const char *comp_unit,
+//                                    const char *function,
+//                                    const char *block_spec
+//                                    const char *line_number,
+//                                    const char *symbol)
+//{
+//    SymbolContext sc;
+//    sc.target = target_sp;
+//    
+//    if (module != NULL && module[0] != '0')
+//    {
+//    
+//    }
+//    
+//    return sc;
+//}
 
 //----------------------------------------------------------------------
 //

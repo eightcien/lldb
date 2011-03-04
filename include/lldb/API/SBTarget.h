@@ -179,6 +179,12 @@ public:
                              bool wait_for,     // if true wait for a new instance of "name" to be launched
                              lldb::SBError& error);   // An error explaining what went wrong if attach fails
 
+    lldb::SBProcess
+    ConnectRemote (SBListener &listener,
+                   const char *url,
+                   const char *plugin_name, // Can be NULL
+                   SBError& error);
+    
     lldb::SBFileSpec
     GetExecutable ();
 
@@ -203,6 +209,10 @@ public:
     bool
     ResolveLoadAddress (lldb::addr_t vm_addr, 
                         lldb::SBAddress& addr);
+
+    SBSymbolContext
+    ResolveSymbolContextForAddress (const SBAddress& addr, 
+                                    uint32_t resolve_scope);
 
     lldb::SBBreakpoint
     BreakpointCreateByLocation (const char *file, uint32_t line);

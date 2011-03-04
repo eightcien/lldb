@@ -14,6 +14,7 @@
 
 // C++ Includes
 #include <list>
+#include <vector>
 
 // Other libraries and framework includes
 #include "lldb/Core/ArchSpec.h"
@@ -218,9 +219,6 @@ public:
     virtual lldb_private::Error
     DisableWatchpoint (lldb_private::WatchpointLocation *wp_loc);
 
-    virtual lldb_private::DynamicLoader *
-    GetDynamicLoader ();
-    
     virtual bool
     StartNoticingNewThreads();    
 
@@ -295,16 +293,10 @@ protected:
     StartDebugserverProcess (const char *debugserver_url,   // The connection string to use in the spawned debugserver ("localhost:1234" or "/dev/tty...")
                              char const *inferior_argv[],
                              char const *inferior_envp[],
-                             const char *stdin_path,
-                             const char *stdout_path,
-                             const char *stderr_path,
-                             const char *working_dir,
-                             bool launch_process,           // Set to true if we are going to be launching a the process
                              lldb::pid_t attach_pid,        // If inferior inferior_argv == NULL, then attach to this pid
                              const char *attach_pid_name,   // Wait for the next process to launch whose basename matches "attach_wait_name"
                              bool wait_for_launch,          // Wait for the process named "attach_wait_name" to launch
-                             uint32_t launch_flags,
-                             lldb_private::ArchSpec& arch_spec);
+                             const lldb_private::ArchSpec& arch_spec);
 
     void
     KillDebugserverProcess ();
@@ -327,8 +319,6 @@ protected:
         eBroadcastBitAsyncThreadShouldExit          = (1 << 1)
     };
 
-
-    std::auto_ptr<lldb_private::DynamicLoader> m_dynamic_loader_ap;
     lldb_private::Flags m_flags;            // Process specific flags (see eFlags enums)
     lldb_private::Mutex m_stdio_mutex;      // Multithreaded protection for stdio
     GDBRemoteCommunication m_gdb_comm;
@@ -343,7 +333,12 @@ protected:
     lldb::tid_t m_curr_tid;         // Current gdb remote protocol thread index for all other operations
     lldb::tid_t m_curr_tid_run;     // Current gdb remote protocol thread index for continue, step, etc
     uint32_t m_z0_supported:1;      // Set to non-zero if Z0 and z0 packets are supported
-    lldb_private::StreamString m_continue_packet;
+    typedef std::vector<lldb::tid_t> tid_collection;
+    typedef std::vector< std::pair<lldb::tid_t,int> > tid_sig_collection;
+    tid_collection m_continue_c_tids;                  // 'c' for continue
+    tid_sig_collection m_continue_C_tids; // 'C' for continue with signal
+    tid_collection m_continue_s_tids;                  // 's' for step
+    tid_sig_collection m_continue_S_tids; // 'S' for step with signal
     lldb::addr_t m_dispatch_queue_offsets_addr;
     uint32_t m_packet_timeout;
     size_t m_max_memory_size;       // The maximum number of bytes to read/write when reading and writing memory

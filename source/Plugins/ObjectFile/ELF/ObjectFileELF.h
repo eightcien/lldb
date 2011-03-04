@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "lldb/lldb-private.h"
-#include "lldb/Core/FileSpec.h"
+#include "lldb/Host/FileSpec.h"
 #include "lldb/Symbol/ObjectFile.h"
 
 #include "ELFHeader.h"
@@ -105,7 +105,7 @@ public:
     Dump(lldb_private::Stream *s);
 
     virtual bool
-    GetTargetTriple(lldb_private::ConstString &target_triple);
+    GetArchitecture (lldb_private::ArchSpec &arch);
 
     virtual bool
     GetUUID(lldb_private::UUID* uuid);
@@ -115,9 +115,6 @@ public:
 
     virtual lldb_private::Address
     GetImageInfoAddress();
-
-    lldb_private::ArchSpec 
-    GetArchitecture();
 
 private:
     ObjectFileELF(lldb_private::Module* module,

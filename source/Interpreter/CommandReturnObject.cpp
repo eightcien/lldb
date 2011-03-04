@@ -19,8 +19,8 @@ using namespace lldb;
 using namespace lldb_private;
 
 CommandReturnObject::CommandReturnObject () :
-    m_output_stream (),
-    m_error_stream (),
+    m_out_stream (),
+    m_err_stream (),
     m_status (eReturnStatusStarted),
     m_did_change_process_state (false)
 {
@@ -28,18 +28,6 @@ CommandReturnObject::CommandReturnObject () :
 
 CommandReturnObject::~CommandReturnObject ()
 {
-}
-
-StreamString &
-CommandReturnObject::GetOutputStream ()
-{
-    return m_output_stream;
-}
-
-StreamString &
-CommandReturnObject::GetErrorStream ()
-{
-    return m_error_stream;
 }
 
 void
@@ -51,9 +39,8 @@ CommandReturnObject::AppendErrorWithFormat (const char *format, ...)
     sstrm.PrintfVarArg(format, args);
     va_end (args);
 
-    m_error_stream.Printf("error: %s", sstrm.GetData());
+    GetErrorStream().Printf("error: %s", sstrm.GetData());
 }
-
 
 void
 CommandReturnObject::AppendMessageWithFormat (const char *format, ...)
@@ -64,7 +51,7 @@ CommandReturnObject::AppendMessageWithFormat (const char *format, ...)
     sstrm.PrintfVarArg(format, args);
     va_end (args);
 
-    m_output_stream.Printf("%s", sstrm.GetData());
+    GetOutputStream().Printf("%s", sstrm.GetData());
 }
 
 void
@@ -76,7 +63,7 @@ CommandReturnObject::AppendWarningWithFormat (const char *format, ...)
     sstrm.PrintfVarArg(format, args);
     va_end (args);
 
-    m_error_stream.Printf("warning: %s", sstrm.GetData());
+    GetErrorStream().Printf("warning: %s", sstrm.GetData());
 }
 
 void
@@ -84,7 +71,7 @@ CommandReturnObject::AppendMessage (const char *in_string, int len)
 {
     if (len < 0)
         len = ::strlen (in_string);
-    m_output_stream.Printf("%*.*s\n", len, len, in_string);
+    GetOutputStream().Printf("%*.*s\n", len, len, in_string);
 }
 
 void
@@ -92,7 +79,7 @@ CommandReturnObject::AppendWarning (const char *in_string, int len)
 {
     if (len < 0)
         len = ::strlen (in_string);
-    m_error_stream.Printf("warning: %*.*s\n", len, len, in_string);
+    GetErrorStream().Printf("warning: %*.*s\n", len, len, in_string);
 }
 
 // Similar to AppendWarning, but do not prepend 'warning: ' to message, and
@@ -103,7 +90,7 @@ CommandReturnObject::AppendRawWarning (const char *in_string, int len)
 {
     if (len < 0)
         len = ::strlen (in_string);
-    m_error_stream.Printf("%*.*s", len, len, in_string);
+    GetErrorStream().Printf("%*.*s", len, len, in_string);
 }
 
 void
@@ -114,7 +101,7 @@ CommandReturnObject::AppendError (const char *in_string, int len)
 
     if (len < 0)
         len = ::strlen (in_string);
-    m_error_stream.Printf ("error: %*.*s\n", len, len, in_string);
+    GetErrorStream().Printf ("error: %*.*s\n", len, len, in_string);
 }
 
 // Similar to AppendError, but do not prepend 'Error: ' to message, and
@@ -125,7 +112,7 @@ CommandReturnObject::AppendRawError (const char *in_string, int len)
 {
     if (len < 0)
         len = ::strlen (in_string);
-    m_error_stream.Printf ("%*.*s", len, len, in_string);
+    GetErrorStream().Printf ("%*.*s", len, len, in_string);
 }
 
 void
@@ -156,9 +143,15 @@ CommandReturnObject::HasResult ()
 void
 CommandReturnObject::Clear()
 {
-    m_output_stream.Clear();
-    m_error_stream.Clear();
+    lldb::StreamSP stream_sp;
+    stream_sp = m_out_stream.GetStreamAtIndex (eStreamStringIndex);
+    if (stream_sp)
+        static_cast<StreamString *>(stream_sp.get())->Clear();
+    stream_sp = m_err_stream.GetStreamAtIndex (eStreamStringIndex);
+    if (stream_sp)
+        static_cast<StreamString *>(stream_sp.get())->Clear();
     m_status = eReturnStatusStarted;
+    m_did_change_process_state = false;
 }
 
 bool

@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "lldb/Core/Error.h"
-#include "lldb/Core/FileSpec.h"
+#include "lldb/Host/FileSpec.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Host/Mutex.h"
 
@@ -95,7 +95,11 @@ LoadPluginCallback
         else
         {
             PluginInfo plugin_info = { NULL, NULL, NULL };
-            plugin_info.plugin_handle = Host::DynamicLibraryOpen (plugin_file_spec, error);
+            uint32_t flags = Host::eDynamicLibraryOpenOptionLazy |
+                             Host::eDynamicLibraryOpenOptionLocal |
+                             Host::eDynamicLibraryOpenOptionLimitGetSymbol;
+
+            plugin_info.plugin_handle = Host::DynamicLibraryOpen (plugin_file_spec, flags, error);
             if (plugin_info.plugin_handle)
             {
                 bool success = false;
@@ -1272,6 +1276,24 @@ PluginManager::RegisterPlugin
         return AccessProcessInstances (ePluginRegisterInstance, instance, 0);
     }
     return false;
+}
+
+const char *
+PluginManager::GetProcessPluginNameAtIndex (uint32_t idx)
+{
+    ProcessInstance instance;
+    if (AccessProcessInstances (ePluginGetInstanceAtIndex, instance, idx))
+        return instance.name.c_str();
+    return NULL;
+}
+
+const char *
+PluginManager::GetProcessPluginDescriptionAtIndex (uint32_t idx)
+{
+    ProcessInstance instance;
+    if (AccessProcessInstances (ePluginGetInstanceAtIndex, instance, idx))
+        return instance.description.c_str();
+    return NULL;
 }
 
 bool

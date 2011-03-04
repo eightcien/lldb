@@ -14,20 +14,54 @@
 
 namespace lldb_private {
 
+// Return the bit field(s) from the most significant bit (msbit) to the
+// least significant bit (lsbit) of a 32-bit unsigned value.
 static inline uint32_t
-Bits32 (const uint32_t value, const uint32_t msbit, const uint32_t lsbit)
+Bits32 (const uint32_t bits, const uint32_t msbit, const uint32_t lsbit)
 {
     assert(msbit < 32 && lsbit <= msbit);
-    return (value >> lsbit) & ((1u << (msbit - lsbit + 1)) - 1);
+    return (bits >> lsbit) & ((1u << (msbit - lsbit + 1)) - 1);
 }
 
+// Return the bit value from the 'bit' position of a 32-bit unsigned value.
+static inline uint32_t
+Bit32 (const uint32_t bits, const uint32_t bit)
+{
+    return Bits32(bits, bit, bit);
+}
+
+// Set the bit field(s) from the most significant bit (msbit) to the
+// least significant bit (lsbit) of a 32-bit unsigned value to 'val'.
 static inline void
-SetBits32(uint32_t &bits, unsigned msbit, unsigned lsbit, unsigned val)
+SetBits32(uint32_t &bits, const uint32_t msbit, const uint32_t lsbit, const uint32_t val)
 {
     assert(msbit < 32 && lsbit < 32 && msbit >= lsbit);
-    uint32_t mask = ((1 << (msbit - lsbit + 1)) - 1);
+    uint32_t mask = ((1u << (msbit - lsbit + 1)) - 1);
     bits &= ~(mask << lsbit);
     bits |= (val & mask) << lsbit;
+}
+
+// Set the 'bit' position of a 32-bit unsigned value to 'val'.
+static inline void
+SetBit32(uint32_t &bits, const uint32_t bit, const uint32_t val)
+{
+    SetBits32(bits, bit, bit, val);
+}
+
+// Rotate a 32-bit unsigned value right by the specified amount.
+static inline uint32_t
+Rotr32 (uint32_t bits, uint32_t amt)
+{
+    assert(amt < 32 && "Invalid rotate amount");
+    return (bits >> amt) | (bits << ((32-amt)&31));
+}
+
+// Rotate a 32-bit unsigned value left by the specified amount.
+static inline uint32_t
+Rotl32 (uint32_t bits, uint32_t amt)
+{
+    assert(amt < 32 && "Invalid rotate amount");
+    return (bits << amt) | (bits >> ((32-amt)&31));
 }
 
 // Create a mask that starts at bit zero and includes "bit"
@@ -37,7 +71,7 @@ MaskUpToBit (const uint64_t bit)
     return (1ull << (bit + 1ull)) - 1ull;
 }
 
-// Returns an integer result equal to the number of bits of x that are ones.
+// Return an integer result equal to the number of bits of x that are ones.
 static inline uint32_t
 BitCount (uint64_t x)
 {

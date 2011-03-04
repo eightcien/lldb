@@ -12,7 +12,7 @@
 
 #include "llvm/Support/MachO.h"
 
-#include "lldb/Core/FileSpec.h"
+#include "lldb/Host/FileSpec.h"
 #include "lldb/Host/Mutex.h"
 #include "lldb/Symbol/ObjectFile.h"
 
@@ -83,7 +83,7 @@ public:
     Dump (lldb_private::Stream *s);
 
     virtual bool
-    GetTargetTriple (lldb_private::ConstString &target_triple);
+    GetArchitecture (lldb_private::ArchSpec &arch);
 
     virtual bool
     GetUUID (lldb_private::UUID* uuid);

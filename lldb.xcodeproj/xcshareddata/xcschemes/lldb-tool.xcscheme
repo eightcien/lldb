@@ -31,6 +31,10 @@
       <CommandLineArguments>
          <CommandLineArgument
             argument = "/Volumes/work/gclayton/Documents/src/attach/a.out"
+            isEnabled = "NO">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "-a i386 /Volumes/work/gclayton/Documents/src/lldb/test/macosx/universal/testit"
             isEnabled = "YES">
          </CommandLineArgument>
       </CommandLineArguments>
@@ -89,6 +93,14 @@
             argument = "/Volumes/work/gclayton/Documents/src/attach/a.out"
             isEnabled = "YES">
          </CommandLineArgument>
+         <CommandLineArgument
+            argument = "/Volumes/work/gclayton/Documents/src/lldb/test/abbreviation_tests/a.out"
+            isEnabled = "NO">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "/Volumes/work/gclayton/Documents/src/lldb/test/alias_tests/a.out"
+            isEnabled = "NO">
+         </CommandLineArgument>
       </CommandLineArguments>
       <EnvironmentVariables>
          <EnvironmentVariable
@@ -114,12 +126,12 @@
          <EnvironmentVariable
             key = "LLDB_DEBUGSERVER_LOG_FILE"
             value = "/tmp/debugserver.txt"
-            isEnabled = "YES">
+            isEnabled = "NO">
          </EnvironmentVariable>
          <EnvironmentVariable
             key = "LLDB_DEBUGSERVER_LOG_FLAGS"
             value = "0x802e0e"
-            isEnabled = "YES">
+            isEnabled = "NO">
          </EnvironmentVariable>
       </EnvironmentVariables>
       <AdditionalOptions>
@@ -144,6 +156,10 @@
       <CommandLineArguments>
          <CommandLineArgument
             argument = "/Volumes/work/gclayton/Documents/src/attach/a.out"
+            isEnabled = "NO">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "-a i386 /Volumes/work/gclayton/Documents/src/lldb/test/macosx/universal/testit"
             isEnabled = "YES">
          </CommandLineArgument>
       </CommandLineArguments>

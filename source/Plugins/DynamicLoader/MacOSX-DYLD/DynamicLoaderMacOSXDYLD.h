@@ -20,7 +20,7 @@
 #include "llvm/Support/MachO.h"
 
 #include "lldb/Target/DynamicLoader.h"
-#include "lldb/Core/FileSpec.h"
+#include "lldb/Host/FileSpec.h"
 #include "lldb/Core/UUID.h"
 #include "lldb/Host/Mutex.h"
 #include "lldb/Target/Process.h"
@@ -44,7 +44,7 @@ public:
     GetPluginDescriptionStatic();
 
     static lldb_private::DynamicLoader *
-    CreateInstance (lldb_private::Process *process);
+    CreateInstance (lldb_private::Process *process, bool force);
 
     DynamicLoaderMacOSXDYLD (lldb_private::Process *process);
 

@@ -21,7 +21,7 @@
 
 // These are for the Sourcename completers.
 // FIXME: Make a separate file for the completers.
-#include "lldb/Core/FileSpec.h"
+#include "lldb/Host/FileSpec.h"
 #include "lldb/Core/FileSpecList.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
@@ -600,6 +600,23 @@ BreakpointIDRangeHelpTextCallback ()
     return "A 'breakpoint id list' is a manner of specifying multiple breakpoints. This can be done  through several mechanisms.  The easiest way is to just enter a space-separated list of breakpoint ids.  To specify all the breakpoint locations under a major breakpoint, you can use the major breakpoint number followed by '.*', eg. '5.*' means all the locations under breakpoint 5.  You can also indicate a range of breakpoints by using <start-bp-id> - <end-bp-id>.  The start-bp-id and end-bp-id for a range can be any valid breakpoint ids.  It is not legal, however, to specify a range using specific locations that cross major breakpoint numbers.  I.e. 3.2 - 3.7 is legal; 2 - 5 is legal; but 3.2 - 4.4 is not legal.";
 }
 
+const char * 
+CommandObject::GetArgumentTypeAsCString (const lldb::CommandArgumentType arg_type)
+{
+    if (arg_type >=0 && arg_type < eArgTypeLastArg)
+        return g_arguments_data[arg_type].arg_name;
+    return NULL;
+
+}
+
+const char * 
+CommandObject::GetArgumentDescriptionAsCString (const lldb::CommandArgumentType arg_type)
+{
+    if (arg_type >=0 && arg_type < eArgTypeLastArg)
+        return g_arguments_data[arg_type].help_text;
+    return NULL;
+}
+
 CommandObject::ArgumentTableEntry
 CommandObject::g_arguments_data[] =
 {
@@ -616,7 +633,7 @@ CommandObject::g_arguments_data[] =
     { eArgTypeEndAddress, "end-address", CommandCompletions::eNoCompletion, NULL, "Help text goes here." },
     { eArgTypeExpression, "expr", CommandCompletions::eNoCompletion, NULL, "Help text goes here." },
     { eArgTypeExprFormat, "expression-format", CommandCompletions::eNoCompletion, NULL, "[ [bool|b] | [bin] | [char|c] | [oct|o] | [dec|i|d|u] | [hex|x] | [float|f] | [cstr|s] ]" },
-    { eArgTypeFilename, "filename", CommandCompletions::eNoCompletion, NULL, "The name of a file (can include path)." },
+    { eArgTypeFilename, "filename", CommandCompletions::eDiskFileCompletion, NULL, "The name of a file (can include path)." },
     { eArgTypeFormat, "format", CommandCompletions::eNoCompletion, NULL, "Help text goes here." },
     { eArgTypeFrameIndex, "frame-index", CommandCompletions::eNoCompletion, NULL, "Index into a thread's list of frames." },
     { eArgTypeFullName, "fullname", CommandCompletions::eNoCompletion, NULL, "Help text goes here." },
@@ -667,6 +684,8 @@ CommandObject::g_arguments_data[] =
 const CommandObject::ArgumentTableEntry*
 CommandObject::GetArgumentTable ()
 {
+    // If this assertion fires, then the table above is out of date with the CommandArgumentType enumeration
+    assert ((sizeof (CommandObject::g_arguments_data) / sizeof (CommandObject::ArgumentTableEntry)) == eArgTypeLastArg);
     return CommandObject::g_arguments_data;
 }
 

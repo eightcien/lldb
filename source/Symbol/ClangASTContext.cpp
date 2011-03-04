@@ -54,6 +54,7 @@
 #include <assert.h>
 #endif
 
+#include "lldb/Core/ArchSpec.h"
 #include "lldb/Core/dwarf.h"
 #include "lldb/Core/Flags.h"
 #include "lldb/Core/Log.h"
@@ -393,6 +394,13 @@ ClangASTContext::SetTargetTriple (const char *target_triple)
 {
     Clear();
     m_target_triple.assign(target_triple);
+}
+
+void
+ClangASTContext::SetArchitecture (const ArchSpec &arch)
+{
+    Clear();
+    m_target_triple.assign(arch.GetTriple().str());
 }
 
 bool
@@ -755,6 +763,11 @@ ClangASTContext::GetBuiltinTypeForDWARFEncodingAndBitSize (const char *type_name
                     if (QualTypeMatchesBitSize (bit_size, ast, ast->WCharTy))
                         return ast->WCharTy.getAsOpaquePtr();
                 }
+                else if (streq(type_name, "void"))
+                {
+                    if (QualTypeMatchesBitSize (bit_size, ast, ast->VoidTy))
+                        return ast->VoidTy.getAsOpaquePtr();
+                }
             }
             // We weren't able to match up a type name, just search by size
             if (QualTypeMatchesBitSize (bit_size, ast, ast->CharTy))
@@ -835,6 +848,8 @@ ClangASTContext::GetBuiltinTypeForDWARFEncodingAndBitSize (const char *type_name
         case DW_ATE_unsigned_char:
             if (QualTypeMatchesBitSize (bit_size, ast, ast->UnsignedCharTy))
                 return ast->UnsignedCharTy.getAsOpaquePtr();
+            if (QualTypeMatchesBitSize (bit_size, ast, ast->UnsignedShortTy))
+                return ast->UnsignedShortTy.getAsOpaquePtr();
             break;
 
         case DW_ATE_imaginary_float:
@@ -942,8 +957,8 @@ ClangASTContext::AreTypesSame(ASTContext *ast,
              clang_type_t type1,
              clang_type_t type2)
 {
-    return ast->hasSameType(QualType::getFromOpaquePtr(type1),
-                                    QualType::getFromOpaquePtr(type2));
+    return ast->hasSameType (QualType::getFromOpaquePtr(type1),
+                             QualType::getFromOpaquePtr(type2));
 }
 
 #pragma mark CVR modifiers

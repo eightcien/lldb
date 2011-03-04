@@ -10,11 +10,19 @@
 #ifndef lldb_ARMDefines_h_
 #define lldb_ARMDefines_h_
 
-#include "InstructionUtils.h"
-
 // Common defintions for the ARM/Thumb Instruction Set Architecture.
 
 namespace lldb_private {
+
+// ARM shifter types
+typedef enum
+{
+    SRType_LSL,
+    SRType_LSR,
+    SRType_ASR,
+    SRType_ROR,
+    SRType_RRX
+} ARM_ShifterType;
 
 // ARM conditions          // Meaning (integer)         Meaning (floating-point)      Condition flags
 #define COND_EQ     0x0    // Equal                     Equal                         Z == 1
@@ -58,20 +66,33 @@ static inline const char *ARMCondCodeToString(uint32_t CC)
     }
 }
 
+// Bit positions for CPSR
+#define CPSR_T_POS  5
+#define CPSR_F_POS  6
+#define CPSR_I_POS  7
+#define CPSR_A_POS  8
+#define CPSR_E_POS  9
+#define CPSR_J_POS 24
+#define CPSR_Q_POS 27
+#define CPSR_V_POS 28
+#define CPSR_C_POS 29
+#define CPSR_Z_POS 30
+#define CPSR_N_POS 31
+
 // Masks for CPSR
 #define MASK_CPSR_MODE_MASK     (0x0000001fu)
-#define MASK_CPSR_T         (1u << 5)
-#define MASK_CPSR_F         (1u << 6)
-#define MASK_CPSR_I         (1u << 7)
-#define MASK_CPSR_A         (1u << 8)
-#define MASK_CPSR_E         (1u << 9)
+#define MASK_CPSR_T         (1u << CPSR_T_POS)
+#define MASK_CPSR_F         (1u << CPSR_F_POS)
+#define MASK_CPSR_I         (1u << CPSR_I_POS)
+#define MASK_CPSR_A         (1u << CPSR_A_POS)
+#define MASK_CPSR_E         (1u << CPSR_E_POS)
 #define MASK_CPSR_GE_MASK   (0x000f0000u)
-#define MASK_CPSR_J         (1u << 24)
-#define MASK_CPSR_Q         (1u << 27)
-#define MASK_CPSR_V         (1u << 28)
-#define MASK_CPSR_C         (1u << 29)
-#define MASK_CPSR_Z         (1u << 30)
-#define MASK_CPSR_N         (1u << 31)
+#define MASK_CPSR_J         (1u << CPSR_J_POS)
+#define MASK_CPSR_Q         (1u << CPSR_Q_POS)
+#define MASK_CPSR_V         (1u << CPSR_V_POS)
+#define MASK_CPSR_C         (1u << CPSR_C_POS)
+#define MASK_CPSR_Z         (1u << CPSR_Z_POS)
+#define MASK_CPSR_N         (1u << CPSR_N_POS)
 
 }   // namespace lldb_private
 

@@ -394,8 +394,6 @@ public:
         lldb::InstanceSettingsSP
         CreateInstanceSettings (const char *instance_name);
 
-        static lldb::OptionEnumValueElement g_plugins[];
-
     private:
 
         // Class-wide settings.
@@ -409,6 +407,9 @@ public:
     Initialize ();
 
     static void
+    DidInitialize ();
+
+    static void
     Terminate ();
 
     static lldb::UserSettingsControllerSP &
@@ -417,6 +418,7 @@ public:
     void
     UpdateInstanceName ();
 
+    
     //------------------------------------------------------------------
     /// Construct with a shared pointer to a target, and the Process listener.
     //------------------------------------------------------------------
@@ -473,6 +475,12 @@ public:
                           lldb::pid_t pid,        // The process ID we want to monitor
                           int signo,              // Zero for no signal
                           int status);            // Exit value of process if signal is zero
+
+    lldb::ByteOrder
+    GetByteOrder () const;
+    
+    uint32_t
+    GetAddressByteSize () const;
 
     //------------------------------------------------------------------
     /// Check if a plug-in instance can debug the file in \a module.
@@ -649,15 +657,6 @@ public:
     virtual ArchSpec
     GetArchSpecForExistingProcess (const char *process_name);
 
-    uint32_t
-    GetAddressByteSize();
-
-    void
-    SetAddressByteSize (uint32_t addr_byte_size)
-    {
-        m_addr_byte_size = addr_byte_size;
-    }
-
     //------------------------------------------------------------------
     /// Get the image information address for the current process.
     ///
@@ -821,8 +820,10 @@ public:
     Signal (int signal);
 
     virtual UnixSignals &
-    GetUnixSignals ();
-
+    GetUnixSignals ()
+    {
+        return m_unix_signals;
+    }
 
     //==================================================================
     // Plug-in Process Control Overrides
@@ -1179,7 +1180,10 @@ public:
     ///     module.
     //------------------------------------------------------------------
     Target &
-    GetTarget ();
+    GetTarget ()
+    {
+        return m_target;
+    }
 
     //------------------------------------------------------------------
     /// Get the const target object pointer for this module.
@@ -1189,7 +1193,11 @@ public:
     ///     module.
     //------------------------------------------------------------------
     const Target &
-    GetTarget () const;
+    GetTarget () const
+    {
+        return m_target;
+    }
+
 
     //------------------------------------------------------------------
     /// Get accessor for the current process state.
@@ -1235,6 +1243,12 @@ protected:
     lldb::StateType
     GetPrivateState ();
 
+    //------------------------------------------------------------------
+    // Called internally
+    //------------------------------------------------------------------
+    void
+    CompleteAttach ();
+    
 public:
     //------------------------------------------------------------------
     /// Get the exit status for a process.
@@ -1662,10 +1676,16 @@ public:
     UpdateThreadListIfNeeded () = 0;
 
     ThreadList &
-    GetThreadList ();
+    GetThreadList ()
+    {
+        return m_thread_list;
+    }
 
     const ThreadList &
-    GetThreadList () const;
+    GetThreadList () const
+    {
+        return m_thread_list;
+    }
 
     uint32_t
     GetNextThreadIndexID ();
@@ -1686,6 +1706,26 @@ public:
     PeekAtStateChangedEvents ();
     
 
+    class
+    ProcessEventHijacker
+    {
+    public:
+        ProcessEventHijacker (Process &process, Listener *listener) :
+            m_process (process),
+            m_listener (listener)
+        {
+            m_process.HijackProcessEvents (listener);
+        }
+        ~ProcessEventHijacker ()
+        {
+            m_process.RestoreProcessEvents();
+        }
+         
+    private:
+        Process &m_process;
+        Listener *m_listener;
+    };
+    friend class ProcessEventHijacker;
     //------------------------------------------------------------------
     /// If you need to ensure that you and only you will hear about some public
     /// event, then make a new listener, set to listen to process events, and
@@ -1729,36 +1769,15 @@ protected:
     ShouldBroadcastEvent (Event *event_ptr);
 
 public:
-    //------------------------------------------------------------------
-    /// Gets the byte order for this process.
-    ///
-    /// @return
-    ///     A valid ByteOrder enumeration, or eByteOrderInvalid.
-    //------------------------------------------------------------------
-    lldb::ByteOrder
-    GetByteOrder () const
-    {
-        return m_byte_order;
-    }
-    
-    void
-    SetByteOrder (lldb::ByteOrder byte_order)
-    {
-        m_byte_order = byte_order;
-    }
-
-    const ConstString &
-    GetTargetTriple ()
-    {
-        return m_target_triple;
-    }
-
     const ABI *
     GetABI ();
 
-    virtual DynamicLoader *
-    GetDynamicLoader ();
-    
+    DynamicLoader *
+    GetDynamicLoader ()
+    {
+        return m_dyld_ap.get();
+    }
+
     virtual LanguageRuntime *
     GetLanguageRuntime (lldb::LanguageType language);
 
@@ -1781,12 +1800,30 @@ public:
         m_dynamic_checkers_ap.reset(dynamic_checkers);
     }
 
+    //------------------------------------------------------------------
+    /// Call this to set the lldb in the mode where it breaks on new thread
+    /// creations, and then auto-restarts.  This is useful when you are trying
+    /// to run only one thread, but either that thread or the kernel is creating
+    /// new threads in the process.  If you stop when the thread is created, you
+    /// can immediately suspend it, and keep executing only the one thread you intend.
+    ///
+    /// @return
+    ///     Returns \b true if we were able to start up the notification
+    ///     \b false otherwise.
+    //------------------------------------------------------------------
     virtual bool
     StartNoticingNewThreads()
     {   
         return true;
     }
     
+    //------------------------------------------------------------------
+    /// Call this to turn off the stop & notice new threads mode.
+    ///
+    /// @return
+    ///     Returns \b true if we were able to start up the notification
+    ///     \b false otherwise.
+    //------------------------------------------------------------------
     virtual bool
     StopNoticingNewThreads()
     {   
@@ -1797,16 +1834,28 @@ public:
     // lldb::ExecutionContextScope pure virtual functions
     //------------------------------------------------------------------
     virtual Target *
-    CalculateTarget ();
+    CalculateTarget ()
+    {
+        return &m_target;
+    }
 
     virtual Process *
-    CalculateProcess ();
+    CalculateProcess ()
+    {
+        return this;
+    }
 
     virtual Thread *
-    CalculateThread ();
+    CalculateThread ()
+    {
+        return NULL;
+    }
 
     virtual StackFrame *
-    CalculateStackFrame ();
+    CalculateStackFrame ()
+    {
+        return NULL;
+    }
 
     virtual void
     CalculateExecutionContext (ExecutionContext &exe_ctx);
@@ -1902,6 +1951,17 @@ protected:
         DISALLOW_COPY_AND_ASSIGN (MemoryCache);
     };
 
+    bool 
+    HijackPrivateProcessEvents (Listener *listener);
+    
+    void 
+    RestorePrivateProcessEvents ();
+    
+    bool
+    PrivateStateThreadIsValid () const
+    {
+        return m_private_state_thread != LLDB_INVALID_HOST_THREAD;
+    }
 
     //------------------------------------------------------------------
     // Member variables
@@ -1924,11 +1984,9 @@ protected:
     Listener                    &m_listener;
     BreakpointSiteList          m_breakpoint_site_list; ///< This is the list of breakpoint locations we intend
                                                         ///< to insert in the target.
+    std::auto_ptr<DynamicLoader> m_dyld_ap;
     std::auto_ptr<DynamicCheckerFunctions>  m_dynamic_checkers_ap; ///< The functions used by the expression parser to validate data that expressions use.
     UnixSignals                 m_unix_signals;         /// This is the current signal set for this process.
-    ConstString                 m_target_triple;
-    lldb::ByteOrder             m_byte_order;           /// The byte order of the process. Should be set in DidLaunch/DidAttach.
-    uint32_t                    m_addr_byte_size;       /// The size in bytes of an address/pointer for the inferior process. Should be set in DidLaunch/DidAttach.
     lldb::ABISP                 m_abi_sp;
     lldb::InputReaderSP         m_process_input_reader;
     lldb_private::Communication m_stdio_communication;

@@ -1,5 +1,5 @@
 """
-Test lldb process IO launch flags..
+Test lldb process launch flags..
 """
 
 import os, time
@@ -7,21 +7,18 @@ import unittest2
 import lldb
 from lldbtest import *
 
-class ProcessLaunchIOTestCase(TestBase):
+class ProcessLaunchTestCase(TestBase):
 
-    mydir = "process_io"
+    mydir = "process_launch"
 
     @unittest2.skipUnless(sys.platform.startswith("darwin"), "requires Darwin")
-    def test_with_dsym (self):
+    def test_io_with_dsym (self):
         self.buildDsym ()
         self.process_io_test ()
 
-    def test_with_dwarf (self):
+    def test_io_with_dwarf (self):
         self.buildDwarf ()
         self.process_io_test ()
-
-    def do_nothing (self):
-        i = 1
 
     def process_io_test (self):
         """Test that process launch I/O redirection flags work properly."""
@@ -39,14 +36,12 @@ class ProcessLaunchIOTestCase(TestBase):
         try:
             os.remove (out_file)
         except OSError:
-            # do_nothing (self)
-            i = 1
+            pass
 
         try:
             os.remove (err_file)
         except OSError:
-            # do_nothing (self)
-            i = 1
+            pass
 
         launch_command = "process launch -i " + in_file + " -o " + out_file + " -e " + err_file
         
@@ -75,8 +70,7 @@ class ProcessLaunchIOTestCase(TestBase):
         try:
             os.remove (out_file)
         except OSError:
-            # do_nothing (self)
-            i = 1
+            pass
 
         # Check to see if the 'stderr' file was created
         try:
@@ -97,11 +91,77 @@ class ProcessLaunchIOTestCase(TestBase):
         try:
             os.remove (err_file)
         except OSError:
-            # do_nothing (self)
-            i = 1
+            pass
 
         if not success:
             self.fail (err_msg)
+
+    d = {'CXX_SOURCES' : 'print_cwd.cpp'}
+
+    @unittest2.skipUnless(sys.platform.startswith("darwin"), "requires Darwin")
+    def test_set_working_dir_with_dsym (self):
+        self.buildDsym(dictionary=self.d)
+        self.setTearDownCleanup(self.d)
+        self.my_working_dir_test()
+
+    def test_set_working_dir_with_dwarf (self):
+        self.buildDwarf(dictionary=self.d)
+        self.setTearDownCleanup(self.d)
+        self.my_working_dir_test()
+
+    # rdar://problem/9056462
+    # The process launch flag '-w' for setting the current working directory not working?
+    def my_working_dir_test (self):
+        """Test that '-w dir' sets the working dir when running the inferior."""
+        exe = os.path.join (os.getcwd(), "a.out")
+        self.runCmd("file " + exe)
+
+        mywd = 'my_working_dir'
+        out_file_name = "my_working_dir_test.out"
+
+        my_working_dir_path = os.path.join(os.getcwd(), mywd)
+        out_file_path = os.path.join(my_working_dir_path, out_file_name)
+
+        # Make sure the output files do not exist before launching the process
+        try:
+            os.remove (out_file_path)
+        except OSError:
+            pass
+
+        launch_command = "process launch -w %s -o %s" % (my_working_dir_path,
+                                                         out_file_path)
+
+        self.expect(launch_command,
+                    patterns = [ "Process .* launched: .*a.out" ])
+
+        success = True
+        err_msg = ""
+
+        # Check to see if the 'stdout' file was created
+        try:
+            out_f = open(out_file_path)
+        except IOError:
+            success = False
+            err_msg = err_msg + "ERROR: stdout file was not created.\n"
+        else:
+            # Check to see if the 'stdout' file contains the right output
+            line = out_f.readline();
+            print "line:", line
+            if not re.search(mywd, line):
+                success = False
+                err_msg = err_msg + "The current working directory was not set correctly.\n"
+                out_f.close();
+            
+        # Try to delete the 'stdout' file
+        try:
+            os.remove(out_file_path)
+            pass
+        except OSError:
+            pass
+
+        if not success:
+            self.fail(err_msg)
+
 
 if __name__ == '__main__':
     import atexit

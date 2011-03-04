@@ -16,6 +16,7 @@
 #include "lldb/Core/State.h"
 #include "lldb/Core/StreamString.h"
 #include "lldb/Core/Timer.h"
+#include "lldb/Host/Terminal.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Target/TargetList.h"
 #include "lldb/Target/Process.h"
@@ -23,7 +24,6 @@
 #include "lldb/Target/StopInfo.h"
 #include "lldb/Target/Thread.h"
 
-#include <termios.h>
 
 using namespace lldb;
 using namespace lldb_private;
@@ -247,64 +247,44 @@ Debugger::DisconnectInput()
 void
 Debugger::SetInputFileHandle (FILE *fh, bool tranfer_ownership)
 {
-    m_input_file.SetFileHandle (fh, tranfer_ownership);
-    if (m_input_file.GetFileHandle() == NULL)
-        m_input_file.SetFileHandle (stdin, false);
+    File &in_file = GetInputFile();
+    in_file.SetStream (fh, tranfer_ownership);
+    if (in_file.IsValid() == false)
+        in_file.SetStream (stdin, true);
 
     // Disconnect from any old connection if we had one
     m_input_comm.Disconnect ();
-    m_input_comm.SetConnection (new ConnectionFileDescriptor (::fileno (GetInputFileHandle()), true));
+    m_input_comm.SetConnection (new ConnectionFileDescriptor (in_file.GetDescriptor(), true));
     m_input_comm.SetReadThreadBytesReceivedCallback (Debugger::DispatchInputCallback, this);
 
     Error error;
     if (m_input_comm.StartReadThread (&error) == false)
     {
-        FILE *err_fh = GetErrorFileHandle();
-        if (err_fh)
-        {
-            ::fprintf (err_fh, "error: failed to main input read thread: %s", error.AsCString() ? error.AsCString() : "unkown error");
-            exit(1);
-        }
+        File &err_file = GetErrorFile();
+
+        err_file.Printf ("error: failed to main input read thread: %s", error.AsCString() ? error.AsCString() : "unkown error");
+        exit(1);
     }
-
 }
-
-FILE *
-Debugger::GetInputFileHandle ()
-{
-    return m_input_file.GetFileHandle();
-}
-
 
 void
 Debugger::SetOutputFileHandle (FILE *fh, bool tranfer_ownership)
 {
-    m_output_file.SetFileHandle (fh, tranfer_ownership);
-    if (m_output_file.GetFileHandle() == NULL)
-        m_output_file.SetFileHandle (stdin, false);
+    File &out_file = GetOutputFile();
+    out_file.SetStream (fh, tranfer_ownership);
+    if (out_file.IsValid() == false)
+        out_file.SetStream (stdout, false);
     
     GetCommandInterpreter().GetScriptInterpreter()->ResetOutputFileHandle (fh);
-}
-
-FILE *
-Debugger::GetOutputFileHandle ()
-{
-    return m_output_file.GetFileHandle();
 }
 
 void
 Debugger::SetErrorFileHandle (FILE *fh, bool tranfer_ownership)
 {
-    m_error_file.SetFileHandle (fh, tranfer_ownership);
-    if (m_error_file.GetFileHandle() == NULL)
-        m_error_file.SetFileHandle (stdin, false);
-}
-
-
-FILE *
-Debugger::GetErrorFileHandle ()
-{
-    return m_error_file.GetFileHandle();
+    File &err_file = GetErrorFile();
+    err_file.SetStream (fh, tranfer_ownership);
+    if (err_file.IsValid() == false)
+        err_file.SetStream (stderr, false);
 }
 
 CommandInterpreter &
@@ -369,6 +349,23 @@ Debugger::GetTargetList ()
     return m_target_list;
 }
 
+InputReaderSP 
+Debugger::GetCurrentInputReader ()
+{
+    InputReaderSP reader_sp;
+    
+    if (!m_input_readers.empty())
+    {
+        // Clear any finished readers from the stack
+        while (CheckIfTopInputReaderIsDone()) ;
+        
+        if (!m_input_readers.empty())
+            reader_sp = m_input_readers.top();
+    }
+    
+    return reader_sp;
+}
+
 void
 Debugger::DispatchInputCallback (void *baton, const void *bytes, size_t bytes_len)
 {
@@ -393,14 +390,12 @@ Debugger::DispatchInputInterrupt ()
 {
     m_input_reader_data.clear();
     
-    if (!m_input_readers.empty())
+    InputReaderSP reader_sp (GetCurrentInputReader ());
+    if (reader_sp)
     {
-        while (CheckIfTopInputReaderIsDone ()) ;
+        reader_sp->Notify (eInputReaderInterrupt);
         
-        InputReaderSP reader_sp(m_input_readers.top());
-        if (reader_sp)
-            reader_sp->Notify (eInputReaderInterrupt);
-
+        // If notifying the reader of the interrupt finished the reader, we should pop it off the stack.
         while (CheckIfTopInputReaderIsDone ()) ;
     }
 }
@@ -410,14 +405,12 @@ Debugger::DispatchInputEndOfFile ()
 {
     m_input_reader_data.clear();
     
-    if (!m_input_readers.empty())
+    InputReaderSP reader_sp (GetCurrentInputReader ());
+    if (reader_sp)
     {
-        while (CheckIfTopInputReaderIsDone ()) ;
+        reader_sp->Notify (eInputReaderEndOfFile);
         
-        InputReaderSP reader_sp(m_input_readers.top());
-        if (reader_sp)
-            reader_sp->Notify (eInputReaderEndOfFile);
-
+        // If notifying the reader of the end-of-file finished the reader, we should pop it off the stack.
         while (CheckIfTopInputReaderIsDone ()) ;
     }
 }
@@ -427,11 +420,10 @@ Debugger::CleanUpInputReaders ()
 {
     m_input_reader_data.clear();
     
+    // The bottom input reader should be the main debugger input reader.  We do not want to close that one here.
     while (m_input_readers.size() > 1)
     {
-        while (CheckIfTopInputReaderIsDone ()) ;
-        
-        InputReaderSP reader_sp (m_input_readers.top());
+        InputReaderSP reader_sp (GetCurrentInputReader ());
         if (reader_sp)
         {
             reader_sp->Notify (eInputReaderEndOfFile);
@@ -451,12 +443,8 @@ Debugger::WriteToDefaultReader (const char *bytes, size_t bytes_len)
 
     while (!m_input_readers.empty() && !m_input_reader_data.empty())
     {
-        while (CheckIfTopInputReaderIsDone ())
-            /* Do nothing. */;
-        
         // Get the input reader from the top of the stack
-        InputReaderSP reader_sp(m_input_readers.top());
-        
+        InputReaderSP reader_sp (GetCurrentInputReader ());
         if (!reader_sp)
             break;
 
@@ -474,7 +462,7 @@ Debugger::WriteToDefaultReader (const char *bytes, size_t bytes_len)
         }
     }
     
-    // Flush out any input readers that are donesvn
+    // Flush out any input readers that are done.
     while (CheckIfTopInputReaderIsDone ())
         /* Do nothing. */;
 
@@ -485,13 +473,13 @@ Debugger::PushInputReader (const InputReaderSP& reader_sp)
 {
     if (!reader_sp)
         return;
-    if (!m_input_readers.empty())
-    {
-        // Deactivate the old top reader
-        InputReaderSP top_reader_sp (m_input_readers.top());
-        if (top_reader_sp)
-            top_reader_sp->Notify (eInputReaderDeactivate);
-    }
+ 
+    // Deactivate the old top reader
+    InputReaderSP top_reader_sp (GetCurrentInputReader ());
+    
+    if (top_reader_sp)
+        top_reader_sp->Notify (eInputReaderDeactivate);
+
     m_input_readers.push (reader_sp);
     reader_sp->Notify (eInputReaderActivate);
     ActivateInputReader (reader_sp);
@@ -506,6 +494,7 @@ Debugger::PopInputReader (const lldb::InputReaderSP& pop_reader_sp)
     // read on the stack referesh its prompt and if there is one...
     if (!m_input_readers.empty())
     {
+        // Cannot call GetCurrentInputReader here, as that would cause an infinite loop.
         InputReaderSP reader_sp(m_input_readers.top());
         
         if (!pop_reader_sp || pop_reader_sp.get() == reader_sp.get())
@@ -535,6 +524,7 @@ Debugger::CheckIfTopInputReaderIsDone ()
     bool result = false;
     if (!m_input_readers.empty())
     {
+        // Cannot call GetCurrentInputReader here, as that would cause an infinite loop.
         InputReaderSP reader_sp(m_input_readers.top());
         
         if (reader_sp && reader_sp->IsDone())
@@ -549,35 +539,28 @@ Debugger::CheckIfTopInputReaderIsDone ()
 void
 Debugger::ActivateInputReader (const InputReaderSP &reader_sp)
 {
-    FILE *in_fh = GetInputFileHandle();
+    int input_fd = m_input_file.GetFile().GetDescriptor();
 
-    if (in_fh)
+    if (input_fd >= 0)
     {
-        struct termios in_fh_termios;
-        int in_fd = fileno (in_fh);
-        if (::tcgetattr(in_fd, &in_fh_termios) == 0)
-        {    
-            if (reader_sp->GetEcho())
-                in_fh_termios.c_lflag |= ECHO;  // Turn on echoing
-            else
-                in_fh_termios.c_lflag &= ~ECHO; // Turn off echoing
+        Terminal tty(input_fd);
+        
+        tty.SetEcho(reader_sp->GetEcho());
                 
-            switch (reader_sp->GetGranularity())
-            {
-            case eInputReaderGranularityByte:
-            case eInputReaderGranularityWord:
-                in_fh_termios.c_lflag &= ~ICANON;   // Get one char at a time
-                break;
+        switch (reader_sp->GetGranularity())
+        {
+        case eInputReaderGranularityByte:
+        case eInputReaderGranularityWord:
+            tty.SetCanonical (false);
+            break;
 
-            case eInputReaderGranularityLine:
-            case eInputReaderGranularityAll:
-                in_fh_termios.c_lflag |= ICANON;   // Get lines at a time
-                break;
+        case eInputReaderGranularityLine:
+        case eInputReaderGranularityAll:
+            tty.SetCanonical (true);
+            break;
 
-            default:
-                break;
-            }
-            ::tcsetattr (in_fd, TCSANOW, &in_fh_termios);
+        default:
+            break;
         }
     }
 }
@@ -896,7 +879,7 @@ Debugger::FormatPrompt
                                         ArchSpec arch (target->GetArchitecture ());
                                         if (arch.IsValid())
                                         {
-                                            s.PutCString (arch.AsCString());
+                                            s.PutCString (arch.GetArchitectureName());
                                             var_success = true;
                                         }
                                     }
@@ -1227,9 +1210,7 @@ Debugger::FormatPrompt
 
                                     if (vaddr != LLDB_INVALID_ADDRESS)
                                     {
-                                        int addr_width = 0;
-                                        if (exe_ctx && exe_ctx->process)
-                                            addr_width = exe_ctx->process->GetAddressByteSize() * 2;
+                                        int addr_width = target->GetArchitecture().GetAddressByteSize() * 2;
                                         if (addr_width == 0)
                                             addr_width = 16;
                                         s.Printf("0x%*.*llx", addr_width, addr_width, vaddr);

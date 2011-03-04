@@ -274,6 +274,24 @@ public:
     void
     SetAsyncExecution (bool async);
 
+    File &
+    GetInputFile ()
+    {
+        return m_input_file.GetFile();
+    }
+
+    File &
+    GetOutputFile ()
+    {
+        return m_output_file.GetFile();
+    }
+
+    File &
+    GetErrorFile ()
+    {
+        return m_error_file.GetFile();
+    }
+    
     void
     SetInputFileHandle (FILE *fh, bool tranfer_ownership);
 
@@ -282,15 +300,6 @@ public:
 
     void
     SetErrorFileHandle (FILE *fh, bool tranfer_ownership);
-
-    FILE *
-    GetInputFileHandle ();
-
-    FILE *
-    GetOutputFileHandle ();
-
-    FILE *
-    GetErrorFileHandle ();
 
     Stream&
     GetOutputStream ()
@@ -385,6 +394,9 @@ protected:
     static void
     DispatchInputCallback (void *baton, const void *bytes, size_t bytes_len);
 
+    lldb::InputReaderSP
+    GetCurrentInputReader ();
+    
     void
     ActivateInputReader (const lldb::InputReaderSP &reader_sp);
 

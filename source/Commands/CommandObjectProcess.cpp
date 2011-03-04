@@ -163,51 +163,68 @@ public:
         // If our listener is NULL, users aren't allows to launch
         char filename[PATH_MAX];
         const Module *exe_module = target->GetExecutableModule().get();
+
+        if (exe_module == NULL)
+        {
+            result.AppendError ("no file in target, set executable file using 'file' command");
+            result.SetStatus (eReturnStatusFailed);
+            return false;
+        }
+        
         exe_module->GetFileSpec().GetPath(filename, sizeof(filename));
 
+        StateType state = eStateInvalid;
         Process *process = m_interpreter.GetDebugger().GetExecutionContext().process;
-        if (process && process->IsAlive())
-        {        
-            char message[1024];
-            if (process->GetState() == eStateAttaching)
-                ::strncpy (message, "There is a pending attach, abort it and launch a new process?", sizeof(message));
-            else
-                ::strncpy (message, "There is a running process, kill it and restart?", sizeof(message));
-    
-            if (!m_interpreter.Confirm (message, true))
-            {
-                result.SetStatus (eReturnStatusFailed);
-                return false;
-            }
-            else
-            {
-                Error error (process->Destroy());
-                if (error.Success())
+        if (process)
+        {
+            state = process->GetState();
+            
+            if (process->IsAlive() && state != eStateConnected)
+            {       
+                char message[1024];
+                if (process->GetState() == eStateAttaching)
+                    ::strncpy (message, "There is a pending attach, abort it and launch a new process?", sizeof(message));
+                else
+                    ::strncpy (message, "There is a running process, kill it and restart?", sizeof(message));
+        
+                if (!m_interpreter.Confirm (message, true))
                 {
-                    result.SetStatus (eReturnStatusSuccessFinishResult);
+                    result.SetStatus (eReturnStatusFailed);
+                    return false;
                 }
                 else
                 {
-                    result.AppendErrorWithFormat ("Failed to kill process: %s\n", error.AsCString());
-                    result.SetStatus (eReturnStatusFailed);
+                    Error error (process->Destroy());
+                    if (error.Success())
+                    {
+                        result.SetStatus (eReturnStatusSuccessFinishResult);
+                    }
+                    else
+                    {
+                        result.AppendErrorWithFormat ("Failed to kill process: %s\n", error.AsCString());
+                        result.SetStatus (eReturnStatusFailed);
+                    }
                 }
             }
         }
         
-        const char *plugin_name;
-        if (!m_options.plugin_name.empty())
-            plugin_name = m_options.plugin_name.c_str();
-        else
-            plugin_name = NULL;
-
-        process = target->CreateProcess (m_interpreter.GetDebugger().GetListener(), plugin_name).get();
-
-        if (process == NULL)
+        if (state != eStateConnected)
         {
-            result.AppendErrorWithFormat ("Failed to find a process plugin for executable.\n");
-            result.SetStatus (eReturnStatusFailed);
-            return false;
+            const char *plugin_name;
+            if (!m_options.plugin_name.empty())
+                plugin_name = m_options.plugin_name.c_str();
+            else
+                plugin_name = NULL;
+
+            process = target->CreateProcess (m_interpreter.GetDebugger().GetListener(), plugin_name).get();
+            if (process == NULL)
+            {
+                result.AppendErrorWithFormat ("Failed to find a process plugin for executable.\n");
+                result.SetStatus (eReturnStatusFailed);
+                return false;
+            }
         }
+
 
         // If no launch args were given on the command line, then use any that
         // might have been set using the "run-args" set variable.
@@ -219,16 +236,24 @@ public:
         
         if (m_options.in_new_tty)
         {
-            char exec_file_path[PATH_MAX];
-            if (exe_module->GetFileSpec().GetPath(exec_file_path, sizeof(exec_file_path)))
+            if (state == eStateConnected)
             {
-                launch_args.InsertArgumentAtIndex(0, exec_file_path);
+                result.AppendWarning("launch in tty option is ignored when launching through a remote connection");
+                m_options.in_new_tty = false;
             }
             else
             {
-                result.AppendError("invalid executable");
-                result.SetStatus (eReturnStatusFailed);
-                return false;
+                char exec_file_path[PATH_MAX];
+                if (exe_module->GetFileSpec().GetPath(exec_file_path, sizeof(exec_file_path)))
+                {
+                    launch_args.InsertArgumentAtIndex(0, exec_file_path);
+                }
+                else
+                {
+                    result.AppendError("invalid executable");
+                    result.SetStatus (eReturnStatusFailed);
+                    return false;
+                }
             }
         }
 
@@ -310,7 +335,7 @@ public:
                      
         if (error.Success())
         {
-            const char *archname = exe_module->GetArchitecture().AsCString();
+            const char *archname = exe_module->GetArchitecture().GetArchitectureName();
 
             result.AppendMessageWithFormat ("Process %i launched: '%s' (%s)\n", process->GetID(), filename, archname);
             result.SetDidChangeProcessState (true);
@@ -328,6 +353,10 @@ public:
                         if (synchronous_execution)
                         {
                             state = process->WaitForProcessToStop (NULL);
+                            if (!StateIsStoppedState(state))
+                            {
+                                result.AppendErrorWithFormat ("Process isn't stopped: %s", StateAsCString(state));
+                            }                    
                             result.SetDidChangeProcessState (true);
                             result.SetStatus (eReturnStatusSuccessFinishResult);
                         }
@@ -336,8 +365,23 @@ public:
                             result.SetStatus (eReturnStatusSuccessContinuingNoResult);
                         }
                     }
+                    else
+                    {
+                        result.AppendErrorWithFormat ("Process resume at entry point failed: %s", error.AsCString());
+                        result.SetStatus (eReturnStatusFailed);
+                    }                    
                 }
+                else
+                {
+                    result.AppendErrorWithFormat ("Initial process state wasn't stopped: %s", StateAsCString(state));
+                    result.SetStatus (eReturnStatusFailed);
+                }                    
             }
+        }
+        else
+        {
+            result.AppendErrorWithFormat ("Process launch failed: %s", error.AsCString());
+            result.SetStatus (eReturnStatusFailed);
         }
 
         return result.Succeeded();
@@ -544,9 +588,11 @@ public:
         bool synchronous_execution = m_interpreter.GetSynchronous ();
         
         Process *process = m_interpreter.GetDebugger().GetExecutionContext().process;
+        StateType state = eStateInvalid;
         if (process)
         {
-            if (process->IsAlive())
+            state = process->GetState();
+            if (process->IsAlive() && state != eStateConnected)
             {
                 result.AppendErrorWithFormat ("Process %u is currently being debugged, kill the process before attaching.\n", 
                                               process->GetID());
@@ -591,12 +637,15 @@ public:
         }
         else
         {
-            const char *plugin_name = NULL;
-            
-            if (!m_options.plugin_name.empty())
-                plugin_name = m_options.plugin_name.c_str();
+            if (state != eStateConnected)
+            {
+                const char *plugin_name = NULL;
+                
+                if (!m_options.plugin_name.empty())
+                    plugin_name = m_options.plugin_name.c_str();
 
-            process = target->CreateProcess (m_interpreter.GetDebugger().GetListener(), plugin_name).get();
+                process = target->CreateProcess (m_interpreter.GetDebugger().GetListener(), plugin_name).get();
+            }
 
             if (process)
             {
@@ -758,12 +807,12 @@ public:
             
             if (!old_arch_spec.IsValid())
             {
-                result.AppendMessageWithFormat ("Architecture set to: %s.\n", target->GetArchitecture().AsCString());
+                result.AppendMessageWithFormat ("Architecture set to: %s.\n", target->GetArchitecture().GetArchitectureName());
             }
             else if (old_arch_spec != target->GetArchitecture())
             {
                 result.AppendWarningWithFormat("Architecture changed from %s to %s.\n", 
-                                                old_arch_spec.AsCString(), target->GetArchitecture().AsCString());
+                                                old_arch_spec.GetArchitectureName(), target->GetArchitecture().GetArchitectureName());
             }
         }
         return result.Succeeded();
@@ -1464,7 +1513,7 @@ public:
         CommandReturnObject &result
     )
     {
-        StreamString &output_stream = result.GetOutputStream();
+        Stream &output_stream = result.GetOutputStream();
         result.SetStatus (eReturnStatusSuccessFinishNoResult);
         ExecutionContext exe_ctx(m_interpreter.GetDebugger().GetExecutionContext());
         if (exe_ctx.process)
@@ -1484,7 +1533,10 @@ public:
                 }
                 else
                 {
-                    output_stream.Printf ("Process %d %s\n", exe_ctx.process->GetID(), StateAsCString (state));
+                    if (state == eStateConnected)
+                        output_stream.Printf ("Connected to remote target.\n");
+                    else
+                        output_stream.Printf ("Process %d %s\n", exe_ctx.process->GetID(), StateAsCString (state));
                     if (exe_ctx.thread == NULL)
                         exe_ctx.thread = exe_ctx.process->GetThreadList().GetThreadAtIndex(0).get();
                     if (exe_ctx.thread != NULL)

@@ -13,6 +13,7 @@
 #include "lldb/Core/ArchSpec.h"
 #include "lldb/Core/DataExtractor.h"
 #include "lldb/Core/StreamString.h"
+#include "lldb/Core/State.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/RegisterContext.h"
 #include "lldb/Target/StopInfo.h"
@@ -22,10 +23,10 @@
 
 #include "ProcessGDBRemote.h"
 #include "ProcessGDBRemoteLog.h"
+#include "Plugins/Process/Utility/UnwindLLDB.h"
 #include "Utility/StringExtractorGDBRemote.h"
-#include "UnwindLLDB.h"
 
-#ifdef __APPLE__
+#if defined(__APPLE__)
 #include "UnwindMacOSXFrameBackchain.h"
 #endif
 
@@ -88,7 +89,11 @@ ThreadGDBRemote::WillResume (StateType resume_state)
     Thread::WillResume(resume_state);
 
     int signo = GetResumeSignal();
+    lldb::LogSP log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_STEP));
+    if (log)
+        log->Printf ("Resuming thread: %4.4x with state: %s.", GetID(), StateAsCString(resume_state));
 
+    ProcessGDBRemote &process = GetGDBProcess();
     switch (resume_state)
     {
     case eStateSuspended:
@@ -98,16 +103,16 @@ ThreadGDBRemote::WillResume (StateType resume_state)
 
     case eStateRunning:
         if (m_process.GetUnixSignals().SignalIsValid (signo))
-            GetGDBProcess().m_continue_packet.Printf(";C%2.2x:%4.4x", signo, GetID());
+            process.m_continue_C_tids.push_back(std::make_pair(GetID(), signo));
         else
-            GetGDBProcess().m_continue_packet.Printf(";c:%4.4x", GetID());
+            process.m_continue_c_tids.push_back(GetID());
         break;
 
     case eStateStepping:
         if (m_process.GetUnixSignals().SignalIsValid (signo))
-            GetGDBProcess().m_continue_packet.Printf(";S%2.2x:%4.4x", signo, GetID());
+            process.m_continue_S_tids.push_back(std::make_pair(GetID(), signo));
         else
-            GetGDBProcess().m_continue_packet.Printf(";s:%4.4x", GetID());
+            process.m_continue_s_tids.push_back(GetID());
         break;
 
     default:
@@ -137,11 +142,12 @@ ThreadGDBRemote::GetUnwinder ()
     if (m_unwinder_ap.get() == NULL)
     {
         const ArchSpec target_arch (GetProcess().GetTarget().GetArchitecture ());
-        if (target_arch == ArchSpec("x86_64") ||  target_arch == ArchSpec("i386"))
+        const llvm::Triple::ArchType machine = target_arch.GetMachine();
+        if (machine == llvm::Triple::x86_64 || machine == llvm::Triple::x86)
         {
             m_unwinder_ap.reset (new UnwindLLDB (*this));
         }
-#ifdef __APPLE__
+#if defined(__APPLE__)
         else
         {
             m_unwinder_ap.reset (new UnwindMacOSXFrameBackchain (*this));
@@ -203,12 +209,12 @@ ThreadGDBRemote::CreateRegisterContextForFrame (StackFrame *frame)
     return reg_ctx_sp;
 }
 
-void
+bool
 ThreadGDBRemote::PrivateSetRegisterValue (uint32_t reg, StringExtractor &response)
 {
     GDBRemoteRegisterContext *gdb_reg_ctx = static_cast<GDBRemoteRegisterContext *>(GetRegisterContext ().get());
     assert (gdb_reg_ctx);
-    gdb_reg_ctx->PrivateSetRegisterValue (reg, response);
+    return gdb_reg_ctx->PrivateSetRegisterValue (reg, response);
 }
 
 bool

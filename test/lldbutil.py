@@ -41,6 +41,117 @@ def lldb_iter(obj, getsize, getelem):
         yield elem(i)
 
 
+# ===================================================
+# Disassembly for an SBFunction or an SBSymbol object
+# ===================================================
+
+def disassemble(target, function_or_symbol):
+    """Disassemble the function or symbol given a target.
+
+    It returns the disassembly content in a string object.
+    """
+    buf = StringIO.StringIO()
+    insts = function_or_symbol.GetInstructions(target)
+    for i in lldb_iter(insts, 'GetSize', 'GetInstructionAtIndex'):
+        print >> buf, i
+    return buf.getvalue()
+
+
+# ==========================================================
+# Integer (byte size 1, 2, 4, and 8) to bytearray conversion
+# ==========================================================
+
+def int_to_bytearray(val, bytesize):
+    """Utility function to convert an integer into a bytearray.
+
+    It returns the bytearray in the little endian format.  It is easy to get the
+    big endian format, just do ba.reverse() on the returned object.
+    """
+    from struct import *
+
+    if bytesize == 1:
+        return bytearray([val])
+
+    # Little endian followed by a format character.
+    template = "<%c"
+    if bytesize == 2:
+        fmt = template % 'h'
+    elif bytesize == 4:
+        fmt = template % 'i'
+    elif bytesize == 4:
+        fmt = template % 'q'
+    else:
+        return None
+
+    packed = pack(fmt, val)
+    return bytearray(map(ord, packed))
+
+def bytearray_to_int(bytes, bytesize):
+    """Utility function to convert a bytearray into an integer.
+
+    It interprets the bytearray in the little endian format. For a big endian
+    bytearray, just do ba.reverse() on the object before passing it in.
+    """
+    from struct import *
+
+    if bytesize == 1:
+        return ba[0]
+
+    # Little endian followed by a format character.
+    template = "<%c"
+    if bytesize == 2:
+        fmt = template % 'h'
+    elif bytesize == 4:
+        fmt = template % 'i'
+    elif bytesize == 4:
+        fmt = template % 'q'
+    else:
+        return None
+
+    unpacked = unpack(fmt, str(bytes))
+    return unpacked[0]
+
+
+# ===========================================================
+# Returns the list of stopped thread(s) given an lldb process
+# ===========================================================
+
+def get_stopped_threads(process, reason):
+    """Returns the thread(s) with the specified stop reason in a list."""
+    threads = []
+    for t in lldb_iter(process, 'GetNumThreads', 'GetThreadAtIndex'):
+        if t.GetStopReason() == reason:
+            threads.append(t)
+    return threads
+
+def get_stopped_thread(process, reason):
+    """A convenience function which returns the first thread with the given stop
+    reason or None.
+
+    Example usages:
+
+    1. Get the stopped thread due to a breakpoint condition
+
+    ...
+        from lldbutil import get_stopped_thread
+        thread = get_stopped_thread(self.process, lldb.eStopReasonPlanComplete)
+        self.assertTrue(thread != None, "There should be a thread stopped due to breakpoint condition")
+    ...
+
+    2. Get the thread stopped due to a breakpoint
+
+    ...
+        from lldbutil import get_stopped_thread
+        thread = get_stopped_thread(self.process, lldb.eStopReasonBreakpoint)
+        self.assertTrue(thread != None, "There should be a thread stopped due to breakpoint")
+    ...
+
+    """
+    threads = get_stopped_threads(process, reason)
+    if len(threads) == 0:
+        return None
+    return threads[0]
+
 # =================================================
 # Convert some enum value to its string counterpart
 # =================================================

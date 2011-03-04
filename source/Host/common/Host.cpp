@@ -11,23 +11,29 @@
 #include "lldb/Core/ArchSpec.h"
 #include "lldb/Core/ConstString.h"
 #include "lldb/Core/Error.h"
-#include "lldb/Core/FileSpec.h"
+#include "lldb/Host/FileSpec.h"
 #include "lldb/Core/Log.h"
 #include "lldb/Core/StreamString.h"
+#include "lldb/Host/Config.h"
 #include "lldb/Host/Endian.h"
 #include "lldb/Host/Mutex.h"
+
+#include "llvm/Support/Host.h"
 
 #include <dlfcn.h>
 #include <errno.h>
 
 #if defined (__APPLE__)
+
 #include <dispatch/dispatch.h>
 #include <libproc.h>
 #include <mach-o/dyld.h>
 #include <sys/sysctl.h>
+
 #elif defined (__linux__)
-#include "llvm/Support/ELF.h"
+
 #include <sys/wait.h>
+
 #endif
 
 using namespace lldb;
@@ -70,7 +76,7 @@ Host::StartMonitoringChildProcess
                                info_ap.get(),
                                NULL);
                                
-        if (thread != LLDB_INVALID_HOST_THREAD)
+        if (IS_VALID_LLDB_HOST_THREAD(thread))
             info_ap.release();
     }
     return thread;
@@ -219,39 +225,113 @@ Host::GetPageSize()
 }
 
 const ArchSpec &
-Host::GetArchitecture ()
+Host::GetArchitecture (SystemDefaultArchitecture arch_kind)
 {
-    static ArchSpec g_host_arch;
-    if (!g_host_arch.IsValid())
-    {
+    static bool g_supports_32 = false;
+    static bool g_supports_64 = false;
+    static ArchSpec g_host_arch_32;
+    static ArchSpec g_host_arch_64;
+
 #if defined (__APPLE__)
+
+    // Apple is different in that it can support both 32 and 64 bit executables
+    // in the same operating system running concurrently. Here we detect the
+    // correct host architectures for both 32 and 64 bit including if 64 bit
+    // executables are supported on the system.
+
+    if (g_supports_32 == false && g_supports_64 == false)
+    {
+        // All apple systems support 32 bit execution.
+        g_supports_32 = true;
         uint32_t cputype, cpusubtype;
-        uint32_t is_64_bit_capable;
+        uint32_t is_64_bit_capable = false;
         size_t len = sizeof(cputype);
+        ArchSpec host_arch;
+        // These will tell us about the kernel architecture, which even on a 64
+        // bit machine can be 32 bit...
         if  (::sysctlbyname("hw.cputype", &cputype, &len, NULL, 0) == 0)
         {
-            len = sizeof(cpusubtype);
-            if (::sysctlbyname("hw.cpusubtype", &cpusubtype, &len, NULL, 0) == 0)
-                g_host_arch.SetMachOArch (cputype, cpusubtype);
-            
+            len = sizeof (cpusubtype);
+            if (::sysctlbyname("hw.cpusubtype", &cpusubtype, &len, NULL, 0) != 0)
+                cpusubtype = CPU_TYPE_ANY;
+                
             len = sizeof (is_64_bit_capable);
             if  (::sysctlbyname("hw.cpu64bit_capable", &is_64_bit_capable, &len, NULL, 0) == 0)
             {
                 if (is_64_bit_capable)
+                    g_supports_64 = true;
+            }
+            
+            if (is_64_bit_capable)
+            {
+#if defined (__i386__) || defined (__x86_64__)
+                if (cpusubtype == CPU_SUBTYPE_486)
+                    cpusubtype = CPU_SUBTYPE_I386_ALL;
+#endif
+                if (cputype & CPU_ARCH_ABI64)
                 {
-                    if (cputype == CPU_TYPE_I386 && cpusubtype == CPU_SUBTYPE_486)
-                        cpusubtype = CPU_SUBTYPE_I386_ALL;
-
+                    // We have a 64 bit kernel on a 64 bit system
+                    g_host_arch_32.SetArchitecture (lldb::eArchTypeMachO, ~(CPU_ARCH_MASK) & cputype, cpusubtype);
+                    g_host_arch_64.SetArchitecture (lldb::eArchTypeMachO, cputype, cpusubtype);
+                }
+                else
+                {
+                    // We have a 32 bit kernel on a 64 bit system
+                    g_host_arch_32.SetArchitecture (lldb::eArchTypeMachO, cputype, cpusubtype);
                     cputype |= CPU_ARCH_ABI64;
+                    g_host_arch_64.SetArchitecture (lldb::eArchTypeMachO, cputype, cpusubtype);
                 }
             }
+            else
+            {
+                g_host_arch_32.SetArchitecture (lldb::eArchTypeMachO, cputype, cpusubtype);
+                g_host_arch_64.Clear();
+            }
         }
-#elif defined (__linux__)
-        // FIXME: Set according to the host triple.
-        g_host_arch.SetElfArch(llvm::ELF::EM_X86_64, 0);
-#endif
     }
-    return g_host_arch;
+    
+#else // #if defined (__APPLE__)
+
+    if (g_supports_32 == false && g_supports_64 == false)
+    {
+        llvm::Triple triple(llvm::sys::getHostTriple());
+
+        g_host_arch_32.Clear();
+        g_host_arch_64.Clear();
+
+        switch (triple.getArch())
+        {
+        default:
+            g_host_arch_32.SetTriple(triple);
+            g_supports_32 = true;
+            break;
+
+        case llvm::Triple::alpha:
+        case llvm::Triple::x86_64:
+        case llvm::Triple::sparcv9:
+        case llvm::Triple::ppc64:
+        case llvm::Triple::systemz:
+        case llvm::Triple::cellspu:
+            g_host_arch_64.SetTriple(triple);
+            g_supports_64 = true;
+            break;
+        }
+
+        g_supports_32 = g_host_arch_32.IsValid();
+        g_supports_64 = g_host_arch_64.IsValid();
+    }
+    
+#endif // #else for #if defined (__APPLE__)
+    
+    if (arch_kind == eSystemDefaultArchitecture32)
+        return g_host_arch_32;
+    else if (arch_kind == eSystemDefaultArchitecture64)
+        return g_host_arch_64;
+
+    if (g_supports_64)
+        return g_host_arch_64;
+        
+    return g_host_arch_32;
 }
 
 const ConstString &
@@ -297,7 +377,7 @@ Host::GetTargetTriple()
     {
         StreamString triple;
         triple.Printf("%s-%s-%s", 
-                      GetArchitecture().AsCString(),
+                      GetArchitecture().GetArchitectureName(),
                       GetVendorString().AsCString(),
                       GetOSString().AsCString());
 
@@ -646,18 +726,51 @@ Host::ResolveExecutableInBundle (FileSpec &file)
 }
 #endif
 
-void *
-Host::DynamicLibraryOpen (const FileSpec &file_spec, Error &error)
+// Opaque info that tracks a dynamic library that was loaded
+struct DynamicLibraryInfo
 {
-    void *dynamic_library_handle = NULL;
+    DynamicLibraryInfo (const FileSpec &fs, int o, void *h) :
+        file_spec (fs),
+        open_options (o),
+        handle (h)
+    {
+    }
+
+    const FileSpec file_spec;
+    uint32_t open_options;
+    void * handle;
+};
+
+void *
+Host::DynamicLibraryOpen (const FileSpec &file_spec, uint32_t options, Error &error)
+{
     char path[PATH_MAX];
     if (file_spec.GetPath(path, sizeof(path)))
     {
-        dynamic_library_handle = ::dlopen (path, RTLD_LAZY | RTLD_GLOBAL);
+        int mode = 0;
+        
+        if (options & eDynamicLibraryOpenOptionLazy)
+            mode |= RTLD_LAZY;
+        else
+            mode |= RTLD_NOW;
 
-        if (dynamic_library_handle)
+    
+        if (options & eDynamicLibraryOpenOptionLocal)
+            mode |= RTLD_LOCAL;
+        else
+            mode |= RTLD_GLOBAL;
+
+#ifdef LLDB_CONFIG_DLOPEN_RTLD_FIRST_SUPPORTED
+        if (options & eDynamicLibraryOpenOptionLimitGetSymbol)
+            mode |= RTLD_FIRST;
+#endif
+        
+        void * opaque = ::dlopen (path, mode);
+
+        if (opaque)
         {
             error.Clear();
+            return new DynamicLibraryInfo (file_spec, options, opaque);
         }
         else
         {
@@ -668,40 +781,73 @@ Host::DynamicLibraryOpen (const FileSpec &file_spec, Error &error)
     {
         error.SetErrorString("failed to extract path");
     }
-
-    return dynamic_library_handle;
+    return NULL;
 }
 
 Error
-Host::DynamicLibraryClose (void *dynamic_library_handle)
+Host::DynamicLibraryClose (void *opaque)
 {
     Error error;
-    if (dynamic_library_handle == NULL)
+    if (opaque == NULL)
     {
         error.SetErrorString ("invalid dynamic library handle");
     }
-    else if (::dlclose(dynamic_library_handle) != 0)
+    else
     {
-        error.SetErrorString(::dlerror());
+        DynamicLibraryInfo *dylib_info = (DynamicLibraryInfo *) opaque;
+        if (::dlclose (dylib_info->handle) != 0)
+        {
+            error.SetErrorString(::dlerror());
+        }
+        
+        dylib_info->open_options = 0;
+        dylib_info->handle = 0;
+        delete dylib_info;
     }
     return error;
 }
 
 void *
-Host::DynamicLibraryGetSymbol (void *dynamic_library_handle, const char *symbol_name, Error &error)
+Host::DynamicLibraryGetSymbol (void *opaque, const char *symbol_name, Error &error)
 {
-    if (dynamic_library_handle == NULL)
+    if (opaque == NULL)
     {
         error.SetErrorString ("invalid dynamic library handle");
-        return NULL;
     }
-    
-    void *symbol_addr = ::dlsym (dynamic_library_handle, symbol_name);
-    if (symbol_addr == NULL)
-        error.SetErrorString(::dlerror());
     else
-        error.Clear();
-    return symbol_addr;
+    {
+        DynamicLibraryInfo *dylib_info = (DynamicLibraryInfo *) opaque;
+
+        void *symbol_addr = ::dlsym (dylib_info->handle, symbol_name);
+        if (symbol_addr)
+        {
+#ifndef LLDB_CONFIG_DLOPEN_RTLD_FIRST_SUPPORTED
+            // This host doesn't support limiting searches to this shared library
+            // so we need to verify that the match came from this shared library
+            // if it was requested in the Host::DynamicLibraryOpen() function.
+            if (dylib_info->open_options & eDynamicLibraryOpenOptionLimitGetSymbol)
+            {
+                FileSpec match_dylib_spec (Host::GetModuleFileSpecForHostAddress (symbol_addr));
+                if (match_dylib_spec != dylib_info->file_spec)
+                {
+                    char dylib_path[PATH_MAX];
+                    if (dylib_info->file_spec.GetPath (dylib_path, sizeof(dylib_path)))
+                        error.SetErrorStringWithFormat ("symbol not found in \"%s\"", dylib_path);
+                    else
+                        error.SetErrorString ("symbol not found");
+                    return NULL;
+                }
+            }
+#endif
+            error.Clear();
+            return symbol_addr;
+        }
+        else
+        {
+            error.SetErrorString(::dlerror());
+        }
+    }
+    return NULL;
 }
 
 // Use this symbol to identify the LLDB executable.  See Host::GetLLDBPath.
@@ -950,9 +1096,9 @@ Host::GetArchSpecForExistingProcess (lldb::pid_t pid)
     if (error == 0)
         return return_spec;
     if (bsd_info.pbi_flags & PROC_FLAG_LP64)
-        return_spec.SetArch(LLDB_ARCH_DEFAULT_64BIT);
+        return_spec.SetTriple (LLDB_ARCH_DEFAULT_64BIT);
     else 
-        return_spec.SetArch(LLDB_ARCH_DEFAULT_32BIT);
+        return_spec.SetTriple (LLDB_ARCH_DEFAULT_32BIT);
 #endif
         
     return return_spec;

@@ -501,7 +501,7 @@ RegisterContextLinux_x86_64::ReadRegisterBytes(uint32_t reg,
     }
 
     if (status)
-        data.SetData(buf + GetRegOffset(reg), GetRegSize(reg), endian::InlHostByteOrder());
+        data.SetData(buf + GetRegOffset(reg), GetRegSize(reg), lldb::endian::InlHostByteOrder());
 
     return status;
 }

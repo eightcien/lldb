@@ -551,41 +551,75 @@ ClangExpressionDeclMap::GetObjectPointer
         return false;
     }
     
-    if (location_value->GetValueType() == Value::eValueTypeLoadAddress)
+    switch (location_value->GetValueType())
     {
-        lldb::addr_t value_addr = location_value->GetScalar().ULongLong();
-        uint32_t address_byte_size = exe_ctx.target->GetArchitecture().GetAddressByteSize();
-        lldb::ByteOrder address_byte_order = exe_ctx.process->GetByteOrder();
-        
-        if (ClangASTType::GetClangTypeBitWidth(m_struct_vars->m_object_pointer_type.GetASTContext(), 
-                                               m_struct_vars->m_object_pointer_type.GetOpaqueQualType()) != address_byte_size * 8)
-        {
-            err.SetErrorStringWithFormat("'%s' is not of an expected pointer size", object_name.GetCString());
-            return false;
-        }
-        
-        DataBufferHeap data;
-        data.SetByteSize(address_byte_size);
-        Error read_error;
-        
-        if (exe_ctx.process->ReadMemory (value_addr, data.GetBytes(), address_byte_size, read_error) != address_byte_size)
-        {
-            err.SetErrorStringWithFormat("Coldn't read '%s' from the target: %s", object_name.GetCString(), read_error.AsCString());
-            return false;
-        }
-        
-        DataExtractor extractor(data.GetBytes(), data.GetByteSize(), address_byte_order, address_byte_size);
-        
-        uint32_t offset = 0;
-        
-        object_ptr = extractor.GetPointer(&offset);
-        
-        return true;
-    }
-    else
-    {
+    default:
         err.SetErrorStringWithFormat("'%s' is not in memory; LLDB must be extended to handle registers", object_name.GetCString());
         return false;
+    case Value::eValueTypeLoadAddress:
+        {
+            lldb::addr_t value_addr = location_value->GetScalar().ULongLong();
+            uint32_t address_byte_size = exe_ctx.target->GetArchitecture().GetAddressByteSize();
+            lldb::ByteOrder address_byte_order = exe_ctx.process->GetByteOrder();
+            
+            if (ClangASTType::GetClangTypeBitWidth(m_struct_vars->m_object_pointer_type.GetASTContext(), 
+                                                   m_struct_vars->m_object_pointer_type.GetOpaqueQualType()) != address_byte_size * 8)
+            {
+                err.SetErrorStringWithFormat("'%s' is not of an expected pointer size", object_name.GetCString());
+                return false;
+            }
+            
+            DataBufferHeap data;
+            data.SetByteSize(address_byte_size);
+            Error read_error;
+            
+            if (exe_ctx.process->ReadMemory (value_addr, data.GetBytes(), address_byte_size, read_error) != address_byte_size)
+            {
+                err.SetErrorStringWithFormat("Coldn't read '%s' from the target: %s", object_name.GetCString(), read_error.AsCString());
+                return false;
+            }
+            
+            DataExtractor extractor(data.GetBytes(), data.GetByteSize(), address_byte_order, address_byte_size);
+            
+            uint32_t offset = 0;
+            
+            object_ptr = extractor.GetPointer(&offset);
+            
+            return true;
+        }
+    case Value::eValueTypeScalar:
+        {
+            if (location_value->GetContextType() != Value::eContextTypeRegisterInfo)
+            {
+                StreamString ss;
+                location_value->Dump(&ss);
+                
+                err.SetErrorStringWithFormat("%s is a scalar of unhandled type: %s", object_name.GetCString(), ss.GetString().c_str());
+                return false;
+            }
+                        
+            lldb::RegisterInfo *register_info = location_value->GetRegisterInfo();
+            
+            if (!register_info)
+            {
+                err.SetErrorStringWithFormat("Couldn't get the register information for %s", object_name.GetCString());
+                return false;
+            }
+            
+            RegisterContext *register_context = exe_ctx.GetRegisterContext();
+            
+            if (!register_context)
+            {
+                err.SetErrorStringWithFormat("Couldn't read register context to read %s from %s", object_name.GetCString(), register_info->name);
+                return false;
+            }
+            
+            uint32_t register_number = register_info->kinds[lldb::eRegisterKindLLDB];
+            
+            object_ptr = register_context->ReadRegisterAsUnsigned(register_number, 0x0);
+            
+            return true;
+        }
     }
 }
 
@@ -1503,7 +1537,7 @@ ClangExpressionDeclMap::FindVariableInScope
     {
         if (type->GetASTContext() == var_sp->GetType()->GetClangAST())
         {
-            if (!ClangASTContext::AreTypesSame(type->GetASTContext(), type->GetOpaqueQualType(), var_sp->GetType()->GetClangType()))
+            if (!ClangASTContext::AreTypesSame(type->GetASTContext(), type->GetOpaqueQualType(), var_sp->GetType()->GetClangFullType()))
                 return NULL;
         }
         else
@@ -1642,7 +1676,7 @@ ClangExpressionDeclMap::GetDecls (NameSearchContext &context, const ConstString 
                 log->PutCString (strm.GetData());
             }
 
-            TypeFromUser this_user_type(this_type->GetClangType(),
+            TypeFromUser this_user_type(this_type->GetClangFullType(),
                                         this_type->GetClangAST());
             
             m_struct_vars->m_object_pointer_type = this_user_type;
@@ -1689,7 +1723,7 @@ ClangExpressionDeclMap::GetDecls (NameSearchContext &context, const ConstString 
             if (!self_type)
                 return;
         
-            TypeFromUser self_user_type(self_type->GetClangType(),
+            TypeFromUser self_user_type(self_type->GetClangFullType(),
                                         self_type->GetClangAST());
             
             m_struct_vars->m_object_pointer_type = self_user_type;
@@ -1747,7 +1781,7 @@ ClangExpressionDeclMap::GetDecls (NameSearchContext &context, const ConstString 
             log->PutCString (strm.GetData());
         }
 
-        TypeFromUser user_type (type_sp->GetClangType(),
+        TypeFromUser user_type (type_sp->GetClangFullType(),
                                 type_sp->GetClangAST());
             
         AddOneType(context, user_type, false);
@@ -1775,7 +1809,7 @@ ClangExpressionDeclMap::GetVariableValue
         return NULL;
     }
     
-    void *var_opaque_type = var_type->GetClangType();
+    clang_type_t var_opaque_type = var_type->GetClangFullType();
     
     if (!var_opaque_type)
     {
@@ -2031,7 +2065,7 @@ ClangExpressionDeclMap::AddOneFunction(NameSearchContext &context,
             return;
         }
         
-        fun_opaque_type = fun_type->GetClangType();
+        fun_opaque_type = fun_type->GetClangFullType();
         
         if (!fun_opaque_type)
         {

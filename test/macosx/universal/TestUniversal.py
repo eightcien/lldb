@@ -15,7 +15,7 @@ class UniversalTestCase(TestBase):
         # Find the line number to break inside main().
         self.line = line_number('main.c', '// Set break point at this line.')
 
-    # rdar://problem/8689814 test failure: test/macosx/universal (the i386 slice does not break?)
+    # rdar://problem/8972204 AddressByteSize of 32-bit process should be 4, got 8 instead.
     @unittest2.skipUnless(sys.platform.startswith("darwin") and os.uname()[4]=='i386',
                           "requires Darwin & i386")
     def test_process_launch_for_universal(self):
@@ -67,9 +67,12 @@ class UniversalTestCase(TestBase):
         # Check whether we have a 32-bit process launched.
         target = self.dbg.GetSelectedTarget()
         process = target.GetProcess()
-        self.assertTrue(target.IsValid() and process.IsValid() and
-                        self.invoke(process, 'GetAddressByteSize') == 4,
+        self.assertTrue(target.IsValid() and process.IsValid(),
                         "32-bit process launched")
+
+        pointerSize = self.invoke(process, 'GetAddressByteSize')
+        self.assertTrue(pointerSize == 4,
+                        "AddressByteSize of 32-bit process should be 4, got %d instead." % pointerSize)
 
         self.runCmd("continue")
 

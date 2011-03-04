@@ -66,7 +66,8 @@ CommandInterpreter::CommandInterpreter
     m_debugger (debugger),
     m_synchronous_execution (synchronous_execution),
     m_skip_lldbinit_files (false),
-    m_script_interpreter_ap ()
+    m_script_interpreter_ap (),
+    m_comment_char ('#')
 {
     const char *dbg_name = debugger.GetInstanceName().AsCString();
     std::string lang_name = ScriptInterpreter::LanguageToString (script_language);
@@ -90,27 +91,27 @@ CommandInterpreter::Initialize ()
     LoadCommandDictionary ();
 
     // Set up some initial aliases.
-    result.Clear(); HandleCommand ("command alias q        quit", false, result);
-    result.Clear(); HandleCommand ("command alias run      process launch --", false, result);
-    result.Clear(); HandleCommand ("command alias r        process launch --", false, result);
-    result.Clear(); HandleCommand ("command alias c        process continue", false, result);
-    result.Clear(); HandleCommand ("command alias continue process continue", false, result);
-    result.Clear(); HandleCommand ("command alias expr     expression", false, result);
-    result.Clear(); HandleCommand ("command alias exit     quit", false, result);
-    result.Clear(); HandleCommand ("command alias b        regexp-break", false, result);
-    result.Clear(); HandleCommand ("command alias bt       thread backtrace", false, result);
-    result.Clear(); HandleCommand ("command alias si       thread step-inst", false, result);
-    result.Clear(); HandleCommand ("command alias step     thread step-in", false, result);
-    result.Clear(); HandleCommand ("command alias s        thread step-in", false, result);
-    result.Clear(); HandleCommand ("command alias next     thread step-over", false, result);
-    result.Clear(); HandleCommand ("command alias n        thread step-over", false, result);
-    result.Clear(); HandleCommand ("command alias finish   thread step-out", false, result);
-    result.Clear(); HandleCommand ("command alias x        memory read", false, result);
-    result.Clear(); HandleCommand ("command alias l        source list", false, result);
-    result.Clear(); HandleCommand ("command alias list     source list", false, result);
-    result.Clear(); HandleCommand ("command alias p        frame variable", false, result);
-    result.Clear(); HandleCommand ("command alias print    frame variable", false, result);
-    result.Clear(); HandleCommand ("command alias po       expression -o --", false, result);
+    HandleCommand ("command alias q        quit", false, result);
+    HandleCommand ("command alias run      process launch --", false, result);
+    HandleCommand ("command alias r        process launch --", false, result);
+    HandleCommand ("command alias c        process continue", false, result);
+    HandleCommand ("command alias continue process continue", false, result);
+    HandleCommand ("command alias expr     expression", false, result);
+    HandleCommand ("command alias exit     quit", false, result);
+    HandleCommand ("command alias b        regexp-break", false, result);
+    HandleCommand ("command alias bt       thread backtrace", false, result);
+    HandleCommand ("command alias si       thread step-inst", false, result);
+    HandleCommand ("command alias step     thread step-in", false, result);
+    HandleCommand ("command alias s        thread step-in", false, result);
+    HandleCommand ("command alias next     thread step-over", false, result);
+    HandleCommand ("command alias n        thread step-over", false, result);
+    HandleCommand ("command alias finish   thread step-out", false, result);
+    HandleCommand ("command alias x        memory read", false, result);
+    HandleCommand ("command alias l        source list", false, result);
+    HandleCommand ("command alias list     source list", false, result);
+    HandleCommand ("command alias p        frame variable", false, result);
+    HandleCommand ("command alias print    frame variable", false, result);
+    HandleCommand ("command alias po       expression -o --", false, result);
 }
 
 const char *
@@ -698,8 +699,11 @@ bool
 CommandInterpreter::HandleCommand (const char *command_line, 
                                    bool add_to_history,
                                    CommandReturnObject &result,
-                                   ExecutionContext *override_context)
+                                   ExecutionContext *override_context,
+                                   bool repeat_on_empty_command)
+
 {
+
     bool done = false;
     CommandObject *cmd_obj = NULL;
     std::string next_word;
@@ -720,26 +724,56 @@ CommandInterpreter::HandleCommand (const char *command_line,
     
     m_debugger.UpdateExecutionContext (override_context);
 
-    if (command_line == NULL || command_line[0] == '\0')
+    bool empty_command = false;
+    bool comment_command = false;
+    if (command_string.empty())
+        empty_command = true;
+    else
     {
-        if (m_command_history.empty())
+        const char *k_space_characters = "\t\n\v\f\r ";
+
+        size_t non_space = command_string.find_first_not_of (k_space_characters);
+        // Check for empty line or comment line (lines whose first
+        // non-space character is the comment character for this interpreter)
+        if (non_space == std::string::npos)
+            empty_command = true;
+        else if (command_string[non_space] == m_comment_char)
+             comment_command = true;
+    }
+    
+    if (empty_command)
+    {
+        if (repeat_on_empty_command)
         {
-            result.AppendError ("empty command");
-            result.SetStatus(eReturnStatusFailed);
-            return false;
+            if (m_command_history.empty())
+            {
+                result.AppendError ("empty command");
+                result.SetStatus(eReturnStatusFailed);
+                return false;
+            }
+            else
+            {
+                command_line = m_repeat_command.c_str();
+                command_string = command_line;
+                if (m_repeat_command.empty())
+                {
+                    result.AppendErrorWithFormat("No auto repeat.\n");
+                    result.SetStatus (eReturnStatusFailed);
+                    return false;
+                }
+            }
+            add_to_history = false;
         }
         else
         {
-            command_line = m_repeat_command.c_str();
-            command_string = command_line;
-            if (m_repeat_command.empty())
-            {
-                result.AppendErrorWithFormat("No auto repeat.\n");
-                result.SetStatus (eReturnStatusFailed);
-                return false;
-            }
+            result.SetStatus (eReturnStatusSuccessFinishNoResult);
+            return true;
         }
-        add_to_history = false;
+    }
+    else if (comment_command)
+    {
+        result.SetStatus (eReturnStatusSuccessFinishNoResult);
+        return true;
     }
 
     // Phase 1.
@@ -1100,24 +1134,27 @@ CommandInterpreter::SetPrompt (const char *new_prompt)
 }
 
 size_t
-CommandInterpreter::GetConfirmationInputReaderCallback (void *baton,
-                                    InputReader &reader,
-                                    lldb::InputReaderAction action,
-                                    const char *bytes,
-                                    size_t bytes_len)
+CommandInterpreter::GetConfirmationInputReaderCallback 
+(
+    void *baton,
+    InputReader &reader,
+    lldb::InputReaderAction action,
+    const char *bytes,
+    size_t bytes_len
+)
 {
-    FILE *out_fh = reader.GetDebugger().GetOutputFileHandle();
+    File &out_file = reader.GetDebugger().GetOutputFile();
     bool *response_ptr = (bool *) baton;
     
     switch (action)
     {
     case eInputReaderActivate:
-        if (out_fh)
+        if (out_file.IsValid())
         {
             if (reader.GetPrompt())
             {
-                ::fprintf (out_fh, "%s", reader.GetPrompt());
-                ::fflush (out_fh);
+                out_file.Printf ("%s", reader.GetPrompt());
+                out_file.Flush ();
             }
         }
         break;
@@ -1126,10 +1163,10 @@ CommandInterpreter::GetConfirmationInputReaderCallback (void *baton,
         break;
 
     case eInputReaderReactivate:
-        if (out_fh && reader.GetPrompt())
+        if (out_file.IsValid() && reader.GetPrompt())
         {
-            ::fprintf (out_fh, "%s", reader.GetPrompt());
-            ::fflush (out_fh);
+            out_file.Printf ("%s", reader.GetPrompt());
+            out_file.Flush ();
         }
         break;
 
@@ -1150,11 +1187,10 @@ CommandInterpreter::GetConfirmationInputReaderCallback (void *baton,
         }
         else
         {
-            if (out_fh && !reader.IsDone() && reader.GetPrompt())
+            if (out_file.IsValid() && !reader.IsDone() && reader.GetPrompt())
             {
-                ::fprintf (out_fh, "Please answer \"y\" or \"n\"\n");
-                ::fprintf (out_fh, "%s", reader.GetPrompt());
-                ::fflush (out_fh);
+                out_file.Printf ("Please answer \"y\" or \"n\"\n%s", reader.GetPrompt());
+                out_file.Flush ();
             }
         }
         break;
@@ -1454,16 +1490,151 @@ CommandInterpreter::SourceInitFile (bool in_cwd, CommandReturnObject &result)
 
     if (init_file.Exists())
     {
-        char path[PATH_MAX];
-        init_file.GetPath(path, sizeof(path));
-        StreamString source_command;
-        source_command.Printf ("command source '%s'", path);
-        HandleCommand (source_command.GetData(), false, result);
+        ExecutionContext *exe_ctx = NULL;  // We don't have any context yet.
+        bool stop_on_continue = true;
+        bool stop_on_error    = false;
+        bool echo_commands    = false;
+        bool print_results    = false;
+        
+        HandleCommandsFromFile (init_file, exe_ctx, stop_on_continue, stop_on_error, echo_commands, print_results, result);
     }
     else
     {
         // nothing to be done if the file doesn't exist
         result.SetStatus(eReturnStatusSuccessFinishNoResult);
+    }
+}
+
+void
+CommandInterpreter::HandleCommands (StringList &commands, 
+                                    ExecutionContext *override_context, 
+                                    bool stop_on_continue,
+                                    bool stop_on_error,
+                                    bool echo_commands,
+                                    bool print_results,
+                                    CommandReturnObject &result)
+{
+    size_t num_lines = commands.GetSize();
+    
+    // If we are going to continue past a "continue" then we need to run the commands synchronously.
+    // Make sure you reset this value anywhere you return from the function.
+    
+    bool old_async_execution = m_debugger.GetAsyncExecution();
+    
+    // If we've been given an execution context, set it at the start, but don't keep resetting it or we will
+    // cause series of commands that change the context, then do an operation that relies on that context to fail.
+    
+    if (override_context != NULL)
+            m_debugger.UpdateExecutionContext (override_context);
+            
+    if (!stop_on_continue)
+    {
+        m_debugger.SetAsyncExecution (false);
+    }
+
+    for (int idx = 0; idx < num_lines; idx++)
+    {
+        const char *cmd = commands.GetStringAtIndex(idx);
+        if (cmd[0] == '\0')
+            continue;
+            
+        if (echo_commands)
+        {
+            result.AppendMessageWithFormat ("%s %s\n", 
+                                             GetPrompt(), 
+                                             cmd);
+        }
+
+        CommandReturnObject tmp_result;
+        tmp_result.SetImmediateOutputStream (result.GetImmediateOutputStream ());
+        tmp_result.SetImmediateErrorStream (result.GetImmediateErrorStream ());
+        bool success = HandleCommand(cmd, false, tmp_result, NULL);
+        
+        if (print_results)
+        {
+            if (tmp_result.Succeeded())
+              result.AppendMessageWithFormat("%s", tmp_result.GetOutputData());
+        }
+                
+        if (!success || !tmp_result.Succeeded())
+        {
+            if (stop_on_error)
+            {
+                result.AppendErrorWithFormat("Aborting reading of commands after command #%d: '%s' failed.\n", 
+                                         idx, cmd);
+                result.SetStatus (eReturnStatusFailed);
+                m_debugger.SetAsyncExecution (old_async_execution);
+                return;
+            }
+            else if (print_results)
+            {
+                result.AppendMessageWithFormat ("Command #%d '%s' failed with error: %s.\n", 
+                                                idx + 1, 
+                                                cmd, 
+                                                tmp_result.GetErrorData());
+            }
+        }
+        
+        // N.B. Can't depend on DidChangeProcessState, because the state coming into the command execution
+        // could be running (for instance in Breakpoint Commands.
+        // So we check the return value to see if it is has running in it.
+        if ((tmp_result.GetStatus() == eReturnStatusSuccessContinuingNoResult)
+                || (tmp_result.GetStatus() == eReturnStatusSuccessContinuingResult))
+        {
+            if (stop_on_continue)
+            {
+                // If we caused the target to proceed, and we're going to stop in that case, set the
+                // status in our real result before returning.  This is an error if the continue was not the
+                // last command in the set of commands to be run.
+                if (idx != num_lines - 1)
+                    result.AppendErrorWithFormat("Aborting reading of commands after command #%d: '%s' continued the target.\n", 
+                                                 idx + 1, cmd);
+                else
+                    result.AppendMessageWithFormat ("Command #%d '%s' continued the target.\n", idx + 1, cmd);
+                    
+                result.SetStatus(tmp_result.GetStatus());
+                m_debugger.SetAsyncExecution (old_async_execution);
+
+                return;
+            }
+        }
+        
+    }
+    
+    result.SetStatus (eReturnStatusSuccessFinishResult);
+    m_debugger.SetAsyncExecution (old_async_execution);
+
+    return;
+}
+
+void
+CommandInterpreter::HandleCommandsFromFile (FileSpec &cmd_file, 
+                                            ExecutionContext *context, 
+                                            bool stop_on_continue,
+                                            bool stop_on_error,
+                                            bool echo_command,
+                                            bool print_result,
+                                            CommandReturnObject &result)
+{
+    if (cmd_file.Exists())
+    {
+        bool success;
+        StringList commands;
+        success = commands.ReadFileLines(cmd_file);
+        if (!success)
+        {
+            result.AppendErrorWithFormat ("Error reading commands from file: %s.\n", cmd_file.GetFilename().AsCString());
+            result.SetStatus (eReturnStatusFailed);
+            return;
+        }
+        HandleCommands (commands, context, stop_on_continue, stop_on_error, echo_command, print_result, result);
+    }
+    else
+    {
+        result.AppendErrorWithFormat ("Error reading commands from file %s - file not found.\n", 
+                                      cmd_file.GetFilename().AsCString());
+        result.SetStatus (eReturnStatusFailed);
+        return;
     }
 }
 
@@ -1515,12 +1686,18 @@ CommandInterpreter::OutputFormattedHelpText (Stream &strm,
     size_t indent_size = max_word_len + strlen (separator) + 2;
 
     strm.IndentMore (indent_size);
+    
+    StreamString text_strm;
+    text_strm.Printf ("%-*s %s %s",  max_word_len, word_text, separator, help_text);
+    
+    size_t len = text_strm.GetSize();
+    const char *text = text_strm.GetData();
 
-    size_t len = indent_size + strlen (help_text) + 1;
-    char *text  = (char *) malloc (len);
-    sprintf (text, "%-*s %s %s",  max_word_len, word_text, separator, help_text);
     if (text[len - 1] == '\n')
-        text[--len] = '\0';
+    {
+        text_strm.EOL();
+        len = text_strm.GetSize();
+    }
 
     if (len  < max_columns)
     {
@@ -1578,7 +1755,6 @@ CommandInterpreter::OutputFormattedHelpText (Stream &strm,
     }
     strm.EOL();
     strm.IndentLess(indent_size);
-    free (text);
 }
 
 void

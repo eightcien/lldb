@@ -181,11 +181,9 @@ CreateFrontendAction(CompilerInstance &CI) {
 // Implementation of ClangExpressionParser
 //===----------------------------------------------------------------------===//
 
-ClangExpressionParser::ClangExpressionParser(const char *target_triple,
-                                             Process *process,
-                                             ClangExpression &expr) :
-    m_expr(expr),
-    m_target_triple (),
+ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
+                                              ClangExpression &expr) :
+    m_expr (expr),
     m_compiler (),
     m_code_generator (NULL),
     m_execution_engine (),
@@ -198,12 +196,7 @@ ClangExpressionParser::ClangExpressionParser(const char *target_triple,
             llvm::InitializeAllAsmPrinters();
         }
     } InitializeLLVM;
-    
-    if (target_triple && target_triple[0])
-        m_target_triple = target_triple;
-    else
-        m_target_triple = llvm::sys::getHostTriple();
-    
+        
     // 1. Create a new compiler instance.
     m_compiler.reset(new CompilerInstance());    
     m_compiler->setLLVMContext(new LLVMContext());
@@ -218,6 +211,10 @@ ClangExpressionParser::ClangExpressionParser(const char *target_triple,
     m_compiler->getLangOpts().ObjC1 = true;
     m_compiler->getLangOpts().ObjC2 = true;
     
+    Process *process = NULL;
+    if (exe_scope)
+        process = exe_scope->CalculateProcess();
+
     if (process)
     {
         if (process->GetObjCLanguageRuntime())
@@ -242,7 +239,19 @@ ClangExpressionParser::ClangExpressionParser(const char *target_triple,
     m_compiler->getDiagnosticOpts().Warnings.push_back("no-unused-value");
     
     // Set the target triple.
-    m_compiler->getTargetOpts().Triple = m_target_triple;
+    Target *target = NULL;
+    if (exe_scope)
+        target = exe_scope->CalculateTarget();
+
+    // TODO: figure out what to really do when we don't have a valid target.
+    // Sometimes this will be ok to just use the host target triple (when we
+    // evaluate say "2+3", but other expressions like breakpoint conditions
+    // and other things that _are_ target specific really shouldn't just be 
+    // using the host triple. This needs to be fixed in a better way.
+    if (target && target->GetArchitecture().IsValid())
+        m_compiler->getTargetOpts().Triple = target->GetArchitecture().GetTriple().str();
+    else
+        m_compiler->getTargetOpts().Triple = llvm::sys::getHostTriple();
     
     // 3. Set up various important bits of infrastructure.
     m_compiler->createDiagnostics(0, 0);
@@ -708,7 +717,7 @@ ClangExpressionParser::DisassembleFunction (Stream &stream, ExecutionContext &ex
     if (disassembler == NULL)
     {
         ret.SetErrorToGenericError();
-        ret.SetErrorStringWithFormat("Unable to find disassembler plug-in for %s architecture.", arch.AsCString());
+        ret.SetErrorStringWithFormat("Unable to find disassembler plug-in for %s architecture.", arch.GetArchitectureName());
         return ret;
     }
     

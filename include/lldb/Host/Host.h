@@ -97,14 +97,21 @@ public:
     GetByteOrder ();
 
     //------------------------------------------------------------------
-    /// Gets the host kernel architecture.
+    /// Gets the host architecture.
     ///
     /// @return
-    ///     A const architecture object that represents the host kernel
+    ///     A const architecture object that represents the host
     ///     architecture.
     //------------------------------------------------------------------
+    enum SystemDefaultArchitecture
+    {
+        eSystemDefaultArchitecture,     // The overall default architecture that applications will run on this host
+        eSystemDefaultArchitecture32,   // If this host supports 32 bit programs, return the default 32 bit arch
+        eSystemDefaultArchitecture64    // If this host supports 64 bit programs, return the default 64 bit arch
+    };
+
     static const ArchSpec &
-    GetArchitecture ();
+    GetArchitecture (SystemDefaultArchitecture arch_kind = eSystemDefaultArchitecture);
 
     //------------------------------------------------------------------
     /// Gets the host vendor string.
@@ -346,8 +353,15 @@ public:
     static size_t
     GetEnvironment (StringList &env);
 
+    enum DynamicLibraryOpenOptions 
+    {
+        eDynamicLibraryOpenOptionLazy           = (1u << 0),  // Lazily resolve symbols in this dynamic library
+        eDynamicLibraryOpenOptionLocal          = (1u << 1),  // Only open a shared library with local access (hide it from the global symbol namespace)
+        eDynamicLibraryOpenOptionLimitGetSymbol = (1u << 2)   // DynamicLibraryGetSymbol calls on this handle will only return matches from this shared library
+    };
     static void *
     DynamicLibraryOpen (const FileSpec &file_spec, 
+                        uint32_t options,
                         Error &error);
 
     static Error

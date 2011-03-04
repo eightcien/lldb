@@ -108,12 +108,6 @@ Error
 ProcessLinux::WillLaunch(Module* module)
 {
     Error error;
-
-    m_dyld_ap.reset(DynamicLoader::FindPlugin(this, "dynamic-loader.linux-dyld"));
-    if (m_dyld_ap.get() == NULL)
-        error.SetErrorString("unable to find the dynamic loader named "
-                             "'dynamic-loader.linux-dyld'");
-
     return error;
 }
 
@@ -148,8 +142,6 @@ ProcessLinux::DoLaunch(Module *module,
 void
 ProcessLinux::DidLaunch()
 {
-    if (m_dyld_ap.get() != NULL)
-        m_dyld_ap->DidLaunch();
 }
 
 Error
@@ -363,14 +355,14 @@ ProcessLinux::GetSoftwareBreakpointTrapOpcode(BreakpointSite* bp_site)
     const uint8_t *opcode = NULL;
     size_t opcode_size = 0;
 
-    switch (arch.GetGenericCPUType())
+    switch (arch.GetCore())
     {
     default:
         assert(false && "CPU type not supported!");
         break;
 
-    case ArchSpec::eCPU_i386:
-    case ArchSpec::eCPU_x86_64:
+    case ArchSpec::eCore_x86_32_i386:
+    case ArchSpec::eCore_x86_64_x86_64:
         opcode = g_i386_opcode;
         opcode_size = sizeof(g_i386_opcode);
         break;
@@ -405,12 +397,6 @@ ProcessLinux::GetByteOrder() const
     // FIXME: We should be able to extract this value directly.  See comment in
     // ProcessLinux().
     return m_byte_order;
-}
-
-DynamicLoader *
-ProcessLinux::GetDynamicLoader()
-{
-    return m_dyld_ap.get();
 }
 
 size_t

@@ -45,20 +45,29 @@ CommandObjectBreakpointCommandAdd::CommandOptions::~CommandOptions ()
 {
 }
 
+// FIXME: "script-type" needs to have its contents determined dynamically, so somebody can add a new scripting
+// language to lldb and have it pickable here without having to change this enumeration by hand and rebuild lldb proper.
+
+static lldb::OptionEnumValueElement
+g_script_option_enumeration[4] =
+{
+    { eScriptLanguageNone,    "command",         "Commands are in the lldb command interpreter language"},
+    { eScriptLanguagePython,  "python",          "Commands are in the Python language."},
+    { eSortOrderByName,       "default-script",  "Commands are in the default scripting language."},
+    { 0,                      NULL,              NULL }
+};
+
 lldb::OptionDefinition
 CommandObjectBreakpointCommandAdd::CommandOptions::g_option_table[] =
 {
     { LLDB_OPT_SET_ALL, false, "one-liner", 'o', required_argument, NULL, NULL, eArgTypeOneLiner,
         "Specify a one-line breakpoint command inline. Be sure to surround it with quotes." },
 
-    { LLDB_OPT_SET_1,   true, "script",     's', no_argument,       NULL, NULL, eArgTypeNone,
-        "Write the breakpoint command script in the default scripting language."},
+    { LLDB_OPT_SET_ALL, false, "stop-on-error", 'e', required_argument, NULL, NULL, eArgTypeBoolean,
+        "Specify whether breakpoint command execution should terminate on error." },
 
-    { LLDB_OPT_SET_2,   true, "python",     'p', no_argument,       NULL, NULL, eArgTypeNone,
-        "Write the breakpoint command script in the Python scripting language."},
- 
-    { LLDB_OPT_SET_3,   true, "commands",   'c', no_argument,       NULL, NULL, eArgTypeNone,
-        "Write the breakpoint command script using standard debugger commands."},
+    { LLDB_OPT_SET_ALL,   false, "script-type",     's', required_argument, g_script_option_enumeration, NULL, eArgTypeNone,
+        "Specify the language for the commands - if none is specified, the lldb command interpreter will be used."},
 
     { 0, false, NULL, 0, 0, NULL, 0, eArgTypeNone, NULL }
 };
@@ -83,26 +92,42 @@ CommandObjectBreakpointCommandAdd::CommandOptions::SetOptionValue
     switch (short_option)
       {
       case 'o':
-        m_use_one_liner = true;
-        m_one_liner = option_arg;
-        break;
+          m_use_one_liner = true;
+          m_one_liner = option_arg;
+          break;
+          break;
       case 's':
-        m_use_commands = false;
-        m_use_script_language = true;
-        m_script_language = eScriptLanguageDefault;
-        break;
-      case 'p':
-        m_use_commands = false;
-        m_use_script_language = true;
-        m_script_language = eScriptLanguagePython;
-        break;
-      case 'c':
-        m_use_commands = true;
-        m_use_script_language = false;
-        m_script_language = eScriptLanguageNone;
-        break;
+          {
+              bool found_one = false;
+              m_script_language = (lldb::ScriptLanguage) Args::StringToOptionEnum (option_arg, 
+                                                                         g_option_table[option_idx].enum_values, 
+                                                                         eScriptLanguageNone,
+                                                                         &found_one);
+              if (!found_one)
+                  error.SetErrorStringWithFormat("Invalid enumeration value '%s' for option '%c'.\n", 
+                                                 option_arg, 
+                                                 short_option);
+
+              if (m_script_language == eScriptLanguagePython || m_script_language == eScriptLanguageDefault)
+              {
+                  m_use_commands = false;
+                  m_use_script_language = true;
+              }
+              else
+              {
+                  m_use_commands = true;
+                  m_use_script_language = false;
+              }          
+          }
+      break;
+      case 'e':
+          bool success_ptr;
+          m_stop_on_error = Args::StringToBoolean(option_arg, false, &success_ptr);
+          if (!success_ptr)
+              error.SetErrorStringWithFormat("Invalid value for stop-on-error: \"%s\".\n", option_arg);
+          break;
       default:
-        break;
+          break;
       }
     return error;
 }
@@ -112,11 +137,12 @@ CommandObjectBreakpointCommandAdd::CommandOptions::ResetOptionValues ()
 {
     Options::ResetOptionValues();
 
-    m_use_commands = false;
+    m_use_commands = true;
     m_use_script_language = false;
     m_script_language = eScriptLanguageNone;
 
     m_use_one_liner = false;
+    m_stop_on_error = true;
     m_one_liner.clear();
 }
 
@@ -173,13 +199,13 @@ breakpoint commands. \n\
  \n\
 Example Python one-line breakpoint command: \n\
  \n\
-(lldb) breakpoint command add -p 1 \n\
+(lldb) breakpoint command add -s python 1 \n\
 Enter your Python command(s). Type 'DONE' to end. \n\
 > print \"Hit this breakpoint!\" \n\
 > DONE \n\
  \n\
 As a convenience, this also works for a short Python one-liner: \n\
-(lldb) breakpoint command add -p 1 -o \"import time; print time.asctime()\" \n\
+(lldb) breakpoint command add -s python 1 -o \"import time; print time.asctime()\" \n\
 (lldb) run \n\
 Launching '.../a.out'  (x86_64) \n\
 (lldb) Fri Sep 10 12:17:45 2010 \n\
@@ -196,7 +222,7 @@ Process 21778 Stopped \n\
  \n\
 Example multiple line Python breakpoint command, using function definition: \n\
  \n\
-(lldb) breakpoint command add -p 1 \n\
+(lldb) breakpoint command add -s python 1 \n\
 Enter your Python command(s). Type 'DONE' to end. \n\
 > def breakpoint_output (bp_no): \n\
 >     out_string = \"Hit breakpoint number \" + repr (bp_no) \n\
@@ -208,7 +234,7 @@ Enter your Python command(s). Type 'DONE' to end. \n\
  \n\
 Example multiple line Python breakpoint command, using 'loose' Python: \n\
  \n\
-(lldb) breakpoint command add -p 1 \n\
+(lldb) breakpoint command add -s p 1 \n\
 Enter your Python command(s). Type 'DONE' to end. \n\
 > global bp_count \n\
 > bp_count = bp_count + 1 \n\
@@ -309,7 +335,7 @@ CommandObjectBreakpointCommandAdd::Execute
                         bp_options = bp_loc_sp->GetLocationOptions();
                 }
 
-                // Skip this breakpoiont if bp_options is not good.
+                // Skip this breakpoint if bp_options is not good.
                 if (bp_options == NULL) continue;
 
                 // If we are using script language, get the script interpreter
@@ -401,6 +427,7 @@ CommandObjectBreakpointCommandAdd::SetBreakpointCommandCallback (BreakpointOptio
     // while the latter is used for Python to interpret during the actual callback.
     data_ap->user_source.AppendString (oneliner);
     data_ap->script_source.AppendString (oneliner);
+    data_ap->stop_on_error = m_options.m_stop_on_error;
 
     BatonSP baton_sp (new BreakpointOptions::CommandBaton (data_ap.release()));
     bp_options->SetCallback (CommandObjectBreakpointCommand::BreakpointOptionsCallbackFunction, baton_sp);
@@ -418,28 +445,25 @@ CommandObjectBreakpointCommandAdd::GenerateBreakpointCommandCallback
     size_t bytes_len
 )
 {
-    FILE *out_fh = reader.GetDebugger().GetOutputFileHandle();
+    File &out_file = reader.GetDebugger().GetOutputFile();
 
     switch (notification)
     {
     case eInputReaderActivate:
-        if (out_fh)
-        {
-            ::fprintf (out_fh, "%s\n", g_reader_instructions);
-            if (reader.GetPrompt())
-                ::fprintf (out_fh, "%s", reader.GetPrompt());
-            ::fflush (out_fh);
-        }
+        out_file.Printf ("%s\n", g_reader_instructions);
+        if (reader.GetPrompt())
+            out_file.Printf ("%s", reader.GetPrompt());
+        out_file.Flush();
         break;
 
     case eInputReaderDeactivate:
         break;
 
     case eInputReaderReactivate:
-        if (out_fh && reader.GetPrompt())
+        if (reader.GetPrompt())
         {
-            ::fprintf (out_fh, "%s", reader.GetPrompt());
-            ::fflush (out_fh);
+            out_file.Printf ("%s", reader.GetPrompt());
+            out_file.Flush();
         }
         break;
 
@@ -454,10 +478,10 @@ CommandObjectBreakpointCommandAdd::GenerateBreakpointCommandCallback
                     ((BreakpointOptions::CommandData *)bp_options_baton->m_data)->user_source.AppendString (bytes, bytes_len); 
             }
         }
-        if (out_fh && !reader.IsDone() && reader.GetPrompt())
+        if (!reader.IsDone() && reader.GetPrompt())
         {
-            ::fprintf (out_fh, "%s", reader.GetPrompt());
-            ::fflush (out_fh);
+            out_file.Printf ("%s", reader.GetPrompt());
+            out_file.Flush();
         }
         break;
         
@@ -475,8 +499,8 @@ CommandObjectBreakpointCommandAdd::GenerateBreakpointCommandCallback
                     ((BreakpointOptions::CommandData *) bp_options_baton->m_data)->script_source.Clear();
                 }
             }
-            ::fprintf (out_fh, "Warning: No command attached to breakpoint.\n");
-            ::fflush (out_fh);
+            out_file.Printf ("Warning: No command attached to breakpoint.\n");
+            out_file.Flush();
         }
         break;
         
@@ -689,7 +713,9 @@ CommandObjectBreakpointCommandList::Execute
                     if (bp_options)
                     {
                         StreamString id_str;
-                        BreakpointID::GetCanonicalReference (&id_str, cur_bp_id.GetBreakpointID(), cur_bp_id.GetLocationID());
+                        BreakpointID::GetCanonicalReference (&id_str, 
+                                                             cur_bp_id.GetBreakpointID(), 
+                                                             cur_bp_id.GetLocationID());
                         const Baton *baton = bp_options->GetBaton();
                         if (baton)
                         {
@@ -700,7 +726,8 @@ CommandObjectBreakpointCommandList::Execute
                         }
                         else
                         {
-                            result.AppendMessageWithFormat ("Breakpoint %s does not have an associated command.\n", id_str.GetData());
+                            result.AppendMessageWithFormat ("Breakpoint %s does not have an associated command.\n", 
+                                                            id_str.GetData());
                         }
                     }
                     result.SetStatus (eReturnStatusSuccessFinishResult);
@@ -763,64 +790,30 @@ CommandObjectBreakpointCommand::BreakpointOptionsCallbackFunction
     
     BreakpointOptions::CommandData *data = (BreakpointOptions::CommandData *) baton;
     StringList &commands = data->user_source;
-
+    
     if (commands.GetSize() > 0)
     {
-        uint32_t num_commands = commands.GetSize();
-        CommandReturnObject result;
         if (context->exe_ctx.target)
         {
-        
+            CommandReturnObject result;
             Debugger &debugger = context->exe_ctx.target->GetDebugger();
-            CommandInterpreter &interpreter = debugger.GetCommandInterpreter();
-        
-            FILE *out_fh = debugger.GetOutputFileHandle();
-            FILE *err_fh = debugger.GetErrorFileHandle();
+            // Rig up the results secondary output stream to the debugger's, so the output will come out synchronously
+            // if the debugger is set up that way.
                 
-            uint32_t i;
-            for (i = 0; i < num_commands; ++i)
-            {
-                
-                // First time through we use the context from the stoppoint, after that we use whatever
-                // has been set by the previous command.
-                
-                if (!interpreter.HandleCommand (commands.GetStringAtIndex(i), false, result, &context->exe_ctx))
-                    break;
-                    
-                // FIXME: This isn't really the right way to do this.  We should be able to peek at the public 
-                // to see if there is any new events, but that is racey, since the internal process thread has to run and
-                // deliver the event to the public queue before a run will show up.  So for now we check
-                // the internal thread state.
-                
-                lldb::StateType internal_state = context->exe_ctx.process->GetPrivateState();
-                if (internal_state != eStateStopped)
-                {
-                    if (i < num_commands - 1)
-                    {
-                        if (out_fh)
-                            ::fprintf (out_fh, "Short-circuiting command execution because target state changed to %s."
-                                               " last command: \"%s\"\n", StateAsCString(internal_state),
-                                               commands.GetStringAtIndex(i));
-                    }
-                    break;
-                }
-                
-                if (out_fh)
-                    ::fprintf (out_fh, "%s", result.GetErrorStream().GetData());
-                if (err_fh)
-                    ::fprintf (err_fh, "%s", result.GetOutputStream().GetData());
-                result.Clear();
-                result.SetStatus (eReturnStatusSuccessFinishNoResult);
-            }
+            result.SetImmediateOutputFile (debugger.GetOutputFile().GetStream());
+            result.SetImmediateErrorFile (debugger.GetErrorFile().GetStream());
 
-            if (err_fh && !result.Succeeded() && i < num_commands)
-                ::fprintf (err_fh, "Attempt to execute '%s' failed.\n", commands.GetStringAtIndex(i));
+            bool stop_on_continue = true;
+            bool echo_commands    = false;
+            bool print_results    = true;
 
-            if (out_fh)
-                ::fprintf (out_fh, "%s", result.GetErrorStream().GetData());
-
-            if (err_fh)
-                ::fprintf (err_fh, "%s", result.GetOutputStream().GetData());        
+            debugger.GetCommandInterpreter().HandleCommands (commands, 
+                                                             &(context->exe_ctx),
+                                                             stop_on_continue, 
+                                                             data->stop_on_error, 
+                                                             echo_commands, 
+                                                             print_results, 
+                                                             result);
         }
     }
     return ret_value;
